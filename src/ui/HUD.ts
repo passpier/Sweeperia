@@ -43,9 +43,10 @@ export class HUD {
   private readonly advBtn = el<HTMLButtonElement>('<button class="btn panel act"></button>');
   private readonly actBtns: HTMLButtonElement[] = [];
   private toastTimer = 0;
+  private endTimer = 0;
   private lastKey = '';
 
-  constructor(private game: Game, private readonly actions: HudActions, private settings: Settings, private backendNote: () => string) {
+  constructor(private game: Game, private readonly actions: HudActions, private settings: Settings) {
     const top = el('<div class="top"></div>');
     for (const r of RES) {
       const s = el(`<span title="${NAME[r]}">${ICON[r]} <i>0</i></span>`);
@@ -228,7 +229,8 @@ export class HUD {
     box.querySelector('[data-a=again]')!.addEventListener('click', () => this.actions.restart());
     box.querySelector('[data-a=menu]')!.addEventListener('click', () => this.actions.openMenu());
     this.endBox.appendChild(box);
-    setTimeout(() => this.endBox.classList.add('show'), won ? 1200 : 1500);
+    clearTimeout(this.endTimer);
+    this.endTimer = window.setTimeout(() => this.endBox.classList.add('show'), won ? 1200 : 1500);
   }
 
   private score(): number {
@@ -237,6 +239,7 @@ export class HUD {
   }
 
   hideEnd(): void {
+    clearTimeout(this.endTimer);
     this.endBox.classList.remove('show');
   }
 
@@ -246,6 +249,8 @@ export class HUD {
 
   toggleMenu(open = !this.menuOpen): void {
     this.menu.classList.toggle('show', open);
+    if (open) this.hideEnd();
+    else if (this.game.over) this.endBox.classList.add('show');
   }
 
   private buildMenu(): void {
@@ -255,10 +260,11 @@ export class HUD {
       <div class="grid" id="diffs"></div>
       <div class="row">畫質<select id="s-quality"><option value="high">高</option><option value="balanced">中</option><option value="low">低（最快）</option></select></div>
       <div class="row">音效<select id="s-sound"><option value="1">開</option><option value="0">關</option></select></div>
-      <div class="row"><span id="s-note" style="color:var(--muted);font-size:12px"></span><button class="btn" id="close">繼續</button></div>
-      <div class="help">左鍵 揭開 ／ 右鍵 插旗 ／ 點數字 或 中鍵 快速開格<br>
-      拖曳 或 <kbd>WASD</kbd> 移動 · 滾輪 縮放 · <kbd>Q</kbd><kbd>E</kbd> 旋轉 · <kbd>R</kbd> 重開 · <kbd>F3</kbd> 效能<br>
-      手機：點按揭開、長按插旗、雙指縮放。帝國模式：<kbd>1</kbd>–<kbd>4</kbd> 技能、<kbd>G</kbd> 升級時代</div></div>`);
+      <div class="row"><span></span><button class="btn" id="close">繼續</button></div>
+      <div class="help">左鍵 揭開 · 右鍵 插旗 · 中鍵/點數字 快速開格<br>
+      拖曳/<kbd>WASD</kbd> 移動 · 滾輪 縮放 · <kbd>Q</kbd><kbd>E</kbd> 旋轉 · <kbd>R</kbd> 重開<br>
+      帝國模式：<kbd>1</kbd>–<kbd>4</kbd> 技能、<kbd>G</kbd> 升級時代 · 手機：點按揭開、長按插旗<br>
+      <a href="https://github.com/passpier/Sweeperia" target="_blank" rel="noopener">GitHub · passpier/Sweeperia</a></div></div>`);
     const grid = d.querySelector('#diffs')!;
     for (const df of DIFFICULTIES) {
       const best = loadBest(df.id);
@@ -272,7 +278,6 @@ export class HUD {
     const sel = (id: string) => d.querySelector<HTMLSelectElement>(id)!;
     sel('#s-quality').value = s.quality;
     sel('#s-sound').value = s.sound ? '1' : '0';
-    d.querySelector<HTMLElement>('#s-note')!.textContent = this.backendNote();
     const change = () => {
       this.settings = { quality: sel('#s-quality').value as Settings['quality'], sound: sel('#s-sound').value === '1' };
       this.actions.settingsChanged(this.settings);

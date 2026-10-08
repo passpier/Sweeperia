@@ -64,7 +64,6 @@ async function boot(): Promise<void> {
       },
     },
     settings,
-    () => (info.backend === 'webgpu' ? '渲染：WebGPU' : '渲染：WebGL 2'),
   );
 
   function wire(g: Game): void {

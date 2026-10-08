@@ -95,3 +95,5 @@ button, select { font: inherit; color: var(--text); }
   .toast { top: 130px; }
   .grid .btn { min-height: 56px; }
 }
+.help a { color: var(--gold); text-decoration: none; }
+.help a:hover { text-decoration: underline; }
