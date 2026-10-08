@@ -25,7 +25,7 @@
 ## 示範影片
 
 <p align="center">
-  <video src="https://github.com/user-attachments/assets/cfbccf50-29d1-4899-8539-f600cce6cd5d" controls width="560"></video>
+  <video src="https://github.com/user-attachments/assets/c18e4061-aa9e-41fe-871b-cc49f4089b90" controls width="560"></video>
 </p>
 
 ## 操作
