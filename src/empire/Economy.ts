@@ -6,6 +6,7 @@ const TERRAIN_RES: Record<number, ResKey> = {
   [Terrain.Forest]: 'wood',
   [Terrain.Rock]: 'stone',
   [Terrain.Gold]: 'gold',
+  [Terrain.Water]: 'food',
 };
 
 export class Economy {

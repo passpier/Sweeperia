@@ -3,14 +3,19 @@ import { HIDDEN, REVEALED, type Board } from '../core/Board';
 import { Terrain } from '../core/Terrain';
 import { AGES } from '../empire/Ages';
 import { easeOutBack, hash01 } from './ease';
+import { tileMaterial } from './Materials';
 
 export const HIDDEN_H = 0.5;
 export const REVEALED_H = 0.1;
+/** Revealed water cells sink to a river bed under the water surface (y ≈ 0.07). */
+export const WATER_BED_H = 0.02;
 const ANIM_SEC = 0.34;
-const TILE_SCALE = 0.95;
+/** Hidden tiles keep a visible gap (clear click targets); revealed ground closes up into one surface. */
+const GAP_SCALE = 0.95;
+const FLUSH_SCALE = 1.0;
 
-const HIDDEN_BASE = [0x78a050, 0x4f7a3f, 0x86857f, 0x9a8f4a];
-const REVEALED_BASE = [0xd2c08c, 0xa89a6c, 0xa2a39e, 0xcfae52];
+const HIDDEN_BASE = [0x78a050, 0x4f7a3f, 0x86857f, 0x9a8f4a, 0x4a98a0];
+const REVEALED_BASE = [0xd2c08c, 0xa89a6c, 0xa2a39e, 0xcfae52, 0x6f6a52];
 
 /**
  * All board cells in a single InstancedMesh. A cell's matrix is a translate+scale of a unit
@@ -31,8 +36,10 @@ export class TileLayer {
   constructor(private readonly board: Board, private readonly terrain: Uint8Array) {
     const n = board.size;
     const geo = new THREE.BoxGeometry(1, 1, 1);
-    geo.translate(0, 0, 0);
-    const mat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const tAttr = new Float32Array(n);
+    for (let i = 0; i < n; i++) tAttr[i] = terrain[i];
+    geo.setAttribute('terrain', new THREE.InstancedBufferAttribute(tAttr, 1));
+    const mat = tileMaterial();
     this.mesh = new THREE.InstancedMesh(geo, mat, n);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.receiveShadow = true;
@@ -60,12 +67,13 @@ export class TileLayer {
     const t = this.terrain[i];
     const x = i % this.board.width;
     const y = (i / this.board.width) | 0;
-    const checker = (x + y) & 1 ? 0.96 : 1.04;
+    const swing = revealed ? 0.015 : 0.04;
+    const checker = (x + y) & 1 ? 1 - swing : 1 + swing;
     const noise = 0.94 + hash01(i) * 0.12;
     const c = this.col;
     const a = AGES[this.age];
     if (revealed) {
-      c.setHex(REVEALED_BASE[t]).lerp(tmp.setHex(a.revealed), t === Terrain.Gold ? 0.15 : 0.45);
+      c.setHex(REVEALED_BASE[t]).lerp(tmp.setHex(a.revealed), t === Terrain.Gold ? 0.15 : t === Terrain.Water ? 0.05 : 0.45);
     } else {
       c.setHex(HIDDEN_BASE[t]).lerp(tmp.setHex(a.hidden), 0.35);
     }
@@ -76,9 +84,11 @@ export class TileLayer {
     const a = this.mesh.instanceMatrix.array as Float32Array;
     const o = i * 16;
     const h = this.h[i];
-    a[o] = TILE_SCALE;
+    const k = Math.min(1, Math.max(0, (HIDDEN_H - h) / (HIDDEN_H - REVEALED_H)));
+    const sc = GAP_SCALE + (FLUSH_SCALE - GAP_SCALE) * k;
+    a[o] = sc;
     a[o + 5] = h;
-    a[o + 10] = TILE_SCALE;
+    a[o + 10] = sc;
     a[o + 12] = this.centerX(i);
     a[o + 13] = h / 2;
     a[o + 14] = this.centerZ(i);
@@ -124,6 +134,7 @@ export class TileLayer {
     let n = 0;
     for (let k = 0; k < this.activeCount; k++) {
       const cell = this.active[k];
+      const target = this.revealedH(cell);
       const t = (now - this.start[cell]) / ANIM_SEC;
       if (t < 0) {
         this.active[n++] = cell;
@@ -135,10 +146,10 @@ export class TileLayer {
         this.mesh.instanceColor!.needsUpdate = true;
       }
       if (t >= 1) {
-        this.h[cell] = REVEALED_H;
+        this.h[cell] = target;
         this.phase[cell] = 0;
       } else {
-        this.h[cell] = HIDDEN_H + (REVEALED_H - HIDDEN_H) * easeOutBack(t);
+        this.h[cell] = HIDDEN_H + (target - HIDDEN_H) * easeOutBack(t);
         this.active[n++] = cell;
       }
       this.writeMatrix(cell);
@@ -162,9 +173,13 @@ export class TileLayer {
     return this.activeCount > 0;
   }
 
+  private revealedH(cell: number): number {
+    return this.terrain[cell] === Terrain.Water ? WATER_BED_H : REVEALED_H;
+  }
+
   /** Height of the top surface for a cell (for prop placement). */
   topOf(cell: number): number {
-    return this.board.state[cell] === HIDDEN ? HIDDEN_H : REVEALED_H;
+    return this.board.state[cell] === HIDDEN ? HIDDEN_H : this.revealedH(cell);
   }
 }
 

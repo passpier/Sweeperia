@@ -1,13 +1,12 @@
 export type Quality = 'low' | 'balanced' | 'high';
 
 export interface Settings {
-  renderer: 'webgl' | 'webgpu';
   quality: Quality;
   sound: boolean;
 }
 
 const KEY = 'sweeperia.settings.v1';
-const DEFAULTS: Settings = { renderer: 'webgl', quality: 'high', sound: true };
+const DEFAULTS: Settings = { quality: 'high', sound: true };
 
 export function loadSettings(): Settings {
   const s: Settings = { ...DEFAULTS };
@@ -18,8 +17,6 @@ export function loadSettings(): Settings {
     /* storage unavailable */
   }
   const q = new URLSearchParams(location.search);
-  const r = q.get('renderer');
-  if (r === 'webgpu' || r === 'webgl') s.renderer = r;
   const ql = q.get('quality');
   if (ql === 'low' || ql === 'balanced' || ql === 'high') s.quality = ql;
   return s;

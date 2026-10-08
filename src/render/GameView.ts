@@ -10,7 +10,10 @@ import { NumberLayer } from './NumberLayer';
 import { Picker } from './Picker';
 import { Models } from './PropFactory';
 import { PropLayer } from './PropLayer';
-import { HIDDEN_H, REVEALED_H, TileLayer } from './TileLayer';
+import { propMaterial } from './Materials';
+import { SmokeLayer } from './SmokeLayer';
+import { HIDDEN_H, TileLayer } from './TileLayer';
+import { WATER_Y, WaterLayer } from './WaterLayer';
 import { World } from './World';
 
 const FIRE = [0xff5a1f, 0xffb02e, 0xffe08a, 0x7a2a1a];
@@ -32,6 +35,11 @@ export class GameView {
   private tiles!: TileLayer;
   private numbers!: NumberLayer;
   private trees!: PropLayer;
+  private oaks!: PropLayer;
+  private groves!: PropLayer;
+  private tufts!: PropLayer;
+  private water!: WaterLayer;
+  private smoke!: SmokeLayer;
   private rocks!: PropLayer;
   private golds!: PropLayer;
   private houses!: PropLayer;
@@ -50,10 +58,14 @@ export class GameView {
   /** Frames to keep rendering after the last visible change. */
   private pendingFrames = 3;
 
-  private readonly propMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  private readonly propMat = propMaterial(false);
+  private readonly swayMat = propMaterial(true);
   private readonly flatMat = new THREE.MeshBasicMaterial({ vertexColors: true });
   private readonly geo = {
-    tree: Models.tree(),
+    pine: Models.pine(),
+    oak: Models.oak(),
+    grove: Models.grove(),
+    tuft: Models.tuft(),
     rock: Models.rock(),
     gold: Models.goldRock(),
     flag: Models.flag(),
@@ -96,7 +108,13 @@ export class GameView {
     const n = b.size;
     this.tiles = new TileLayer(b, game.terrain);
     this.numbers = new NumberLayer(n);
-    this.trees = new PropLayer(this.geo.tree, this.propMat, n, true);
+    this.water?.dispose();
+    this.water = new WaterLayer(b.width, b.height);
+    this.smoke = new SmokeLayer(n);
+    this.trees = new PropLayer(this.geo.pine, this.swayMat, n, true);
+    this.oaks = new PropLayer(this.geo.oak, this.swayMat, n, true);
+    this.groves = new PropLayer(this.geo.grove, this.swayMat, n, true);
+    this.tufts = new PropLayer(this.geo.tuft, this.swayMat, n, true, false);
     this.rocks = new PropLayer(this.geo.rock, this.propMat, n, true);
     this.golds = new PropLayer(this.geo.gold, this.propMat, n, true);
     this.houses = new PropLayer(this.geo.buildings[0][0], this.propMat, n, true);
@@ -106,8 +124,8 @@ export class GameView {
     this.markers = new PropLayer(this.geo.marker, this.flatMat, n, false, false);
     this.markerTimers.length = 0;
     this.board.add(
-      this.tiles.mesh, this.numbers.group, this.trees.mesh, this.rocks.mesh, this.golds.mesh,
-      this.houses.mesh, this.landmarks.mesh, this.flags.mesh, this.mines.mesh, this.markers.mesh,
+      this.tiles.mesh, this.numbers.group, this.trees.mesh, this.oaks.mesh, this.groves.mesh, this.tufts.mesh, this.rocks.mesh, this.golds.mesh,
+      this.houses.mesh, this.landmarks.mesh, this.flags.mesh, this.mines.mesh, this.markers.mesh, this.water.mesh, this.smoke.mesh,
     );
     this.ground.scale.set(b.width + 2, b.height + 2, 1);
     this.rig.setBoard(b.width / 2, b.height / 2);
@@ -139,8 +157,10 @@ export class GameView {
       const z = this.tiles.centerZ(c);
       const adj = b.adj[c];
       const pd = delay + 0.1;
-      if (adj > 0) this.numbers.add(c, adj, x, REVEALED_H + 0.012, z, now, pd + 0.08);
       const t = g.terrain[c];
+      const top = this.tiles.topOf(c);
+      if (t === Terrain.Water) this.water.reveal(c, now, delay);
+      if (adj > 0) this.numbers.add(c, adj, x, (t === Terrain.Water ? WATER_Y : top) + 0.02, z, now, pd + 0.08);
       const r = hash01(c * 7 + g.seed);
       const small = adj > 0;
       const ox = small ? 0.27 * (r < 0.5 ? -1 : 1) : (r - 0.5) * 0.3;
@@ -148,12 +168,18 @@ export class GameView {
       const sc = small ? 0.5 : 0.9 + r * 0.3;
       const tint = 0.85 + hash01(c + 99) * 0.3;
       if (this.flags.has(c)) this.flags.remove(c);
-      if (t === Terrain.Forest) this.trees.add(c, x + ox, REVEALED_H, z + oz, r * 6.28, sc, now, pd, tint);
-      else if (t === Terrain.Rock) this.rocks.add(c, x + ox, REVEALED_H, z + oz, r * 6.28, sc, now, pd, tint);
-      else if (t === Terrain.Gold) this.golds.add(c, x + ox, REVEALED_H, z + oz, r * 6.28, sc, now, pd, tint);
-      else if (g.empire && adj === 0 && hash01(c + 31) < 0.15) {
-        const layer = hash01(c + 57) < 0.25 ? this.landmarks : this.houses;
-        layer.add(c, x, REVEALED_H, z, Math.floor(r * 4) * (Math.PI / 2), 1, now, pd + 0.1);
+      if (t === Terrain.Forest) {
+        if (small) (r < 0.5 ? this.trees : this.oaks).add(c, x + ox, top, z + oz, r * 6.28, sc, now, pd, tint);
+        else this.groves.add(c, x, top, z, r * 6.28, 0.95 + r * 0.15, now, pd, tint);
+      } else if (t === Terrain.Rock) this.rocks.add(c, x + ox, top, z + oz, r * 6.28, sc, now, pd, tint);
+      else if (t === Terrain.Gold) this.golds.add(c, x + ox, top, z + oz, r * 6.28, sc, now, pd, tint);
+      else if (g.empire && adj === 0 && t !== Terrain.Water && hash01(c + 31) < 0.25) {
+        const landmark = hash01(c + 57) < 0.25;
+        const yaw = Math.floor(r * 4) * (Math.PI / 2);
+        (landmark ? this.landmarks : this.houses).add(c, x, top, z, yaw, 1, now, pd + 0.1);
+        this.smoke.add(c, x, top, z, yaw, landmark);
+      } else if (t === Terrain.Grass && adj === 0 && hash01(c + 13) < 0.75) {
+        this.tufts.add(c, x, top, z, r * 6.28, 0.9 + r * 0.4, now, pd, tint);
       }
     }
     this.world.dirtyShadows();
@@ -186,7 +212,7 @@ export class GameView {
       if (!b.mines[i] || b.state[i] === FLAGGED) continue;
       const d = Math.hypot((i % b.width) - cx, ((i / b.width) | 0) - cy);
       const delay = Math.min(d * 0.03, 1.8);
-      const top = i === cell ? REVEALED_H : HIDDEN_H;
+      const top = this.tiles.topOf(i);
       this.mines.add(i, this.tiles.centerX(i), top, this.tiles.centerZ(i), hash01(i) * 6, 1, now, delay);
     }
     this.effects.burst(this.tiles.centerX(cell), 0.4, this.tiles.centerZ(cell), 140, FIRE, 6, 0.16);
@@ -220,7 +246,8 @@ export class GameView {
   applyAge(age: number): void {
     const a = AGES[age];
     this.tiles.setAge(age);
-    this.world.setAtmosphere(a.sky, a.fog);
+    this.world.setAtmosphere(a.sky, a.fog, a.sun);
+    this.smoke.setAge(age);
     this.houses.setGeometry(this.geo.buildings[age][0]);
     this.landmarks.setGeometry(this.geo.buildings[age][1]);
     const now = this.now;
@@ -252,7 +279,7 @@ export class GameView {
   }
 
   /** Advance animations. Returns true if the frame needs a render. */
-  update(dt: number, renderer: THREE.WebGLRenderer): boolean {
+  update(dt: number): boolean {
     const now = this.now;
     this.rig.update(dt);
     let dirty = this.rig.moved;
@@ -264,10 +291,10 @@ export class GameView {
       this.world.followTarget(this.rig.targetX, this.rig.targetZ);
       this.rig.moved = false;
     }
-    const a = this.tiles.update(now);
+    const a = this.tiles.update(now) || this.water.update(now);
     const b = this.numbers.update(now);
     let c = false;
-    for (const l of [this.trees, this.rocks, this.golds, this.houses, this.landmarks, this.flags, this.mines, this.markers]) {
+    for (const l of [this.trees, this.oaks, this.groves, this.tufts, this.rocks, this.golds, this.houses, this.landmarks, this.flags, this.mines, this.markers]) {
       c = l.update(now) || c;
     }
     const e = this.effects.active;
@@ -290,7 +317,7 @@ export class GameView {
 
     const animating = a || b || c || e || this.effects.active || now < this.celebrateUntil;
     if (animating) this.world.dirtyShadows();
-    this.world.flushShadows(renderer);
+    this.world.flushShadows();
     if (animating || dirty || this.pendingFrames > 0) {
       if (!animating && !dirty) this.pendingFrames--;
       return true;

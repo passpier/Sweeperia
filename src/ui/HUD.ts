@@ -2,6 +2,7 @@ import './hud.css';
 import { ABILITIES, AGES, MAX_AGE, RES, type Cost } from '../empire/Ages';
 import { DIFFICULTIES, type Game } from '../Game';
 import { loadBest, type Settings } from '../settings';
+import { ABILITY_EMBLEMS, AGE_EMBLEMS, LAUREL, RESTART_ICON } from './emblems';
 
 const ICON = { food: '🌾', wood: '🪵', stone: '🪨', gold: '🪙' } as const;
 const NAME = { food: '食物', wood: '木材', stone: '石材', gold: '黃金' } as const;
@@ -30,9 +31,11 @@ export class HUD {
   private readonly resBox = el('<div class="panel res"></div>');
   private readonly timeEl = el('<b>000</b>');
   private readonly minesEl = el('<b>0</b>');
-  private readonly face = el<HTMLButtonElement>('<button class="face" title="重新開始 (R)">🙂</button>');
+  private readonly face = el<HTMLButtonElement>(`<button class="face" title="重新開始 (R)" aria-label="重新開始">${RESTART_ICON}</button>`);
   private readonly ageEl = el('<div class="panel age"></div>');
   private readonly bottom = el('<div class="bottom"></div>');
+  private readonly tip = el('<div class="panel tip"></div>');
+  private suppressClick = false;
   private readonly toastEl = el('<div class="panel toast"></div>');
   private readonly menu = el('<div class="overlay"></div>');
   private readonly endBox = el('<div class="overlay"></div>');
@@ -50,23 +53,25 @@ export class HUD {
       this.resBox.appendChild(s);
     }
     const center = el('<div class="panel center"></div>');
-    center.append(el('<span>💣</span>'), this.minesEl, this.face, this.timeEl, el('<span>⏱</span>'));
+    center.append(el('<span class="ico">💣</span>'), this.minesEl, this.face, this.timeEl, el('<span class="ico">⏱</span>'));
     const menuBtn = el<HTMLButtonElement>('<button class="btn" title="選單 (Esc)">☰</button>');
     menuBtn.onclick = () => actions.openMenu();
     const right = el('<div class="right"></div>');
     right.append(this.ageEl, menuBtn);
     top.append(this.resBox, center, right);
 
-    this.advBtn.onclick = () => this.game.advance();
+    this.advBtn.onclick = () => this.guard(this.advBtn, () => this.game.advance());
+    this.attachTip(this.advBtn, () => this.advTip());
     this.bottom.appendChild(this.advBtn);
     ABILITIES.forEach((a, i) => {
-      const b = el<HTMLButtonElement>(`<button class="btn panel act" title="${a.desc}"><span class="key">${i + 1}</span>${a.name}<small></small><div class="cd"></div></button>`);
-      b.onclick = () => this.game.useAbility(a.id);
+      const b = el<HTMLButtonElement>(`<button class="btn panel act"><span class="emb">${ABILITY_EMBLEMS[a.id]}</span><span class="key">${i + 1}</span><b class="nm">${a.name}</b><em class="sh">${a.short}</em><small></small><div class="cd"></div></button>`);
+      b.onclick = () => this.guard(b, () => this.game.useAbility(a.id));
+      this.attachTip(b, () => this.abilityTip(i));
       this.actBtns.push(b);
       this.bottom.appendChild(b);
     });
     this.face.onclick = () => actions.restart();
-    this.root.append(top, this.bottom, this.toastEl, this.menu, this.endBox);
+    this.root.append(top, this.bottom, this.tip, this.toastEl, this.menu, this.endBox);
     this.buildMenu();
     this.refresh();
   }
@@ -91,6 +96,73 @@ export class HUD {
     return RES.filter((r) => c[r]).map((r) => `<span class="cost ${e[r] >= c[r]! ? '' : 'no'}">${ICON[r]}${c[r]}</span>`).join(' ');
   }
 
+  /** Disabled look without `disabled`, so hover/long-press tooltips still work on locked buttons. */
+  private setOff(b: HTMLButtonElement, off: boolean): void {
+    if (b.classList.contains('off') !== off) {
+      b.classList.toggle('off', off);
+      b.setAttribute('aria-disabled', String(off));
+    }
+  }
+
+  private guard(b: HTMLButtonElement, fn: () => void): void {
+    if (this.suppressClick) {
+      this.suppressClick = false;
+      return;
+    }
+    if (!b.classList.contains('off')) fn();
+  }
+
+  private abilityTip(i: number): string {
+    const a = ABILITIES[i];
+    const locked = this.game.age < a.minAge;
+    return `<h4>${a.name}${locked ? ` · 🔒 ${AGES[a.minAge].name}解鎖` : ''}</h4><p>${a.desc}</p><p class="m">費用 ${this.costHtml(a.cost)} · 冷卻 ${a.cooldownMs / 1000} 秒${a.targeted ? ' · 需點選目標格' : ''} · 快捷鍵 ${i + 1}</p>`;
+  }
+
+  private advTip(): string {
+    const next = this.game.nextAge;
+    if (!next) return `<h4>${AGES[MAX_AGE].name}</h4><p>已達最高時代</p>`;
+    const unlocks = ABILITIES.filter((a) => a.minAge === next.id).map((a) => a.name);
+    return `<h4>升級至 ${next.name}</h4><p>${unlocks.length ? `解鎖技能：${unlocks.join('、')}` : '地貌與天色改變，開啟新時代'}</p><p class="m">費用 ${this.costHtml(next.cost)} · 快捷鍵 G</p>`;
+  }
+
+  /** Hover tooltip on mouse; ~0.4s long-press on touch (the release then does not trigger the button). */
+  private attachTip(b: HTMLButtonElement, html: () => string): void {
+    const show = () => {
+      this.tip.innerHTML = html();
+      this.tip.classList.add('show');
+      const r = b.getBoundingClientRect();
+      const w = this.tip.offsetWidth;
+      this.tip.style.left = `${Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2))}px`;
+      this.tip.style.bottom = `${window.innerHeight - r.top + 8}px`;
+    };
+    const hide = () => this.tip.classList.remove('show');
+    let timer = 0;
+    b.addEventListener('pointerenter', (e) => e.pointerType === 'mouse' && show());
+    b.addEventListener('pointerleave', () => {
+      clearTimeout(timer);
+      hide();
+    });
+    b.addEventListener('pointerdown', (e) => {
+      this.suppressClick = false;
+      if (e.pointerType === 'mouse') return;
+      timer = window.setTimeout(() => {
+        this.suppressClick = true;
+        show();
+      }, 400);
+    });
+    const end = () => {
+      clearTimeout(timer);
+      if (this.suppressClick) setTimeout(hide, 1800);
+    };
+    b.addEventListener('pointerup', end);
+    b.addEventListener('pointercancel', () => {
+      clearTimeout(timer);
+      this.suppressClick = false;
+      hide();
+    });
+    b.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
+
   /** State-driven refresh. Cheap: only touches the DOM when the rendered key changes. */
   refresh(): void {
     const g = this.game;
@@ -100,7 +172,7 @@ export class HUD {
     this.ageEl.style.display = empire ? '' : 'none';
     this.bottom.style.display = empire ? '' : 'none';
     this.minesEl.textContent = String(g.minesLeft);
-    this.face.textContent = g.board.status === 'won' ? '😎' : g.board.status === 'lost' ? '😵' : '🙂';
+    this.face.dataset.state = g.board.status;
     if (!empire) return;
     for (const r of RES) this.resEls[r].textContent = String(e[r]);
     this.ageEl.textContent = `${AGES[g.age].name}${g.shield ? `  🛡${g.shield}` : ''}`;
@@ -109,17 +181,20 @@ export class HUD {
     if (key === this.lastKey) return;
     this.lastKey = key;
     if (next) {
-      this.advBtn.innerHTML = `<span class="key">G</span>⬆ ${next.name}<small>${this.costHtml(next.cost)}</small><div class="cd"></div>`;
-      this.advBtn.disabled = !g.canAdvance();
+      this.advBtn.innerHTML = `<span class="emb">${AGE_EMBLEMS[next.id]}</span><span class="key">G</span><b class="nm">${next.name}</b><em class="sh">升級時代</em><small>${this.costHtml(next.cost)}</small><div class="cd"></div>`;
+      this.advBtn.style.setProperty('--accent', next.accent);
+      this.setOff(this.advBtn, !g.canAdvance());
     } else {
-      this.advBtn.innerHTML = `<small>已達最高時代</small>${AGES[MAX_AGE].name}`;
-      this.advBtn.disabled = true;
+      this.advBtn.innerHTML = `<span class="emb">${AGE_EMBLEMS[MAX_AGE]}</span><b class="nm">${AGES[MAX_AGE].name}</b><em class="sh">已達最高時代</em><small></small>`;
+      this.advBtn.style.setProperty('--accent', AGES[MAX_AGE].accent);
+      this.setOff(this.advBtn, true);
     }
     ABILITIES.forEach((a, i) => {
       const b = this.actBtns[i];
       const locked = g.age < a.minAge;
       b.querySelector('small')!.innerHTML = locked ? `🔒 ${AGES[a.minAge].name}` : this.costHtml(a.cost);
-      b.disabled = locked || !e.canAfford(a.cost) || g.over;
+      this.setOff(b, locked || !e.canAfford(a.cost) || g.over);
+      b.classList.toggle('locked', locked);
       b.classList.toggle('active', g.targeting === a);
     });
   }
@@ -136,7 +211,7 @@ export class HUD {
       bar.style.width = left > 0 ? `${Math.min(100, (left / a.cooldownMs) * 100)}%` : '0';
       const b = this.actBtns[i];
       const dis = g.age < a.minAge || left > 0 || !g.economy.canAfford(a.cost) || g.over;
-      if (b.disabled !== dis) b.disabled = dis;
+      this.setOff(b, dis);
     });
   }
 
@@ -146,7 +221,7 @@ export class HUD {
     const t = g.elapsedMs;
     const empire = g.empire;
     this.endBox.innerHTML = '';
-    const box = el(`<div class="panel dialog end"><h1>${won ? '🏆 勝利！' : '💥 失敗'}</h1>
+    const box = el(`<div class="panel dialog end"><h1>${won ? 'VICTORIA' : 'CLADES'}</h1><p class="sub">${won ? '勝利！' : '失敗'}</p>
       <p>${g.diff.label} · 用時 ${(t / 1000).toFixed(1)} 秒${won && best !== null ? ` · 最佳 ${(best / 1000).toFixed(1)} 秒` : ''}</p>
       ${empire ? `<p>${AGES[g.age].name} · 資源 ${g.economy.total}${won ? ` · 分數 ${this.score()}` : ''}</p>` : ''}
       <div class="grid"><button class="btn" data-a="again">再來一局</button><button class="btn" data-a="menu">選單</button></div></div>`);
@@ -176,9 +251,8 @@ export class HUD {
   private buildMenu(): void {
     const s = this.settings;
     this.menu.innerHTML = '';
-    const d = el(`<div class="panel dialog"><h1>SWEEPERIA</h1><p>帝國掃雷 — 從石器時代揭開世界</p>
+    const d = el(`<div class="panel dialog"><div class="laurel">${LAUREL}</div><h1>SWEEPERIA</h1><p>帝國掃雷 — 從石器時代揭開世界</p>
       <div class="grid" id="diffs"></div>
-      <div class="row">渲染器<select id="s-renderer"><option value="webgl">WebGL（推薦）</option><option value="webgpu">WebGPU（實驗）</option></select></div>
       <div class="row">畫質<select id="s-quality"><option value="high">高</option><option value="balanced">中</option><option value="low">低（最快）</option></select></div>
       <div class="row">音效<select id="s-sound"><option value="1">開</option><option value="0">關</option></select></div>
       <div class="row"><span id="s-note" style="color:var(--muted);font-size:12px"></span><button class="btn" id="close">繼續</button></div>
@@ -196,15 +270,14 @@ export class HUD {
       grid.appendChild(b);
     }
     const sel = (id: string) => d.querySelector<HTMLSelectElement>(id)!;
-    sel('#s-renderer').value = s.renderer;
     sel('#s-quality').value = s.quality;
     sel('#s-sound').value = s.sound ? '1' : '0';
     d.querySelector<HTMLElement>('#s-note')!.textContent = this.backendNote();
     const change = () => {
-      this.settings = { renderer: sel('#s-renderer').value as Settings['renderer'], quality: sel('#s-quality').value as Settings['quality'], sound: sel('#s-sound').value === '1' };
+      this.settings = { quality: sel('#s-quality').value as Settings['quality'], sound: sel('#s-sound').value === '1' };
       this.actions.settingsChanged(this.settings);
     };
-    for (const id of ['#s-renderer', '#s-quality', '#s-sound']) sel(id).onchange = change;
+    for (const id of ['#s-quality', '#s-sound']) sel(id).onchange = change;
     d.querySelector<HTMLElement>('#close')!.onclick = () => this.toggleMenu(false);
     this.menu.appendChild(d);
   }

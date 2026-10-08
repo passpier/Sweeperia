@@ -5,6 +5,7 @@ export const enum Terrain {
   Forest = 1,
   Rock = 2,
   Gold = 3,
+  Water = 4,
 }
 
 function hash2(x: number, y: number, seed: number): number {
@@ -41,6 +42,11 @@ export function generateTerrain(width: number, height: number, seed: number): Ui
       if (rugged > 0.64) t = Terrain.Rock;
       else if (moisture > 0.56) t = Terrain.Forest;
       if (t === Terrain.Rock && rng() < 0.22) t = Terrain.Gold;
+      // Meandering rivers (ridged noise) plus the odd pond in low, damp spots.
+      const river = Math.abs(valueNoise(x / 9 + 3.1, y / 9 + 1.7, seed + 303) - 0.5);
+      const warp = valueNoise(x / 3, y / 3, seed + 404) * 0.02;
+      const pond = valueNoise(x / 4, y / 4, seed + 55) > 0.8 && rugged < 0.55;
+      if (t !== Terrain.Gold && (river + warp < 0.05 || pond)) t = Terrain.Water;
       out[y * width + x] = t;
     }
   }

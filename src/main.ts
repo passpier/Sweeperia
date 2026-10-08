@@ -3,6 +3,8 @@ import { Game, DIFFICULTIES, type Difficulty } from './Game';
 import { Input } from './Input';
 import { AdaptiveQuality } from './perf/AdaptiveQuality';
 import { FrameStats } from './perf/FrameStats';
+import { Post } from './render/Post';
+import { gfx, motion } from './render/Materials';
 import { createRenderer } from './render/createRenderer';
 import { GameView } from './render/GameView';
 import { loadSettings, saveBest, saveSettings, type Quality, type Settings } from './settings';
@@ -14,13 +16,17 @@ const DPR_CAP: Record<Quality, number> = { low: 1, balanced: 1.5, high: 2 };
 async function boot(): Promise<void> {
   const settings = loadSettings();
   const canvas = document.getElementById('view') as HTMLCanvasElement;
-  const info = await createRenderer(canvas, settings.renderer, settings.quality);
+  const info = await createRenderer(canvas, settings.quality);
   const { renderer } = info;
+  gfx.detail = settings.quality !== 'low';
   const view = new GameView(renderer.domElement);
   const stats = new FrameStats();
   const sfx = new Sfx();
   sfx.enabled = settings.sound;
-  view.world.setShadows(settings.quality !== 'low');
+  view.world.setShadows(settings.quality !== 'low', settings.quality === 'high' ? 2048 : 1024);
+  motion.value = settings.quality === 'low' ? 0 : 1;
+  const animated = settings.quality !== 'low';
+  const post = settings.quality === 'high' ? new Post(renderer, view.world.scene, view.rig.camera) : null;
 
   const startDiff = DIFFICULTIES.find((d) => d.id === new URLSearchParams(location.search).get('diff')) ?? DIFFICULTIES[3];
   const game = new Game(startDiff);
@@ -33,10 +39,14 @@ async function boot(): Promise<void> {
     view.rig.resize(window.innerWidth, window.innerHeight);
     view.requestFrame(3);
   };
-  const adaptive = new AdaptiveQuality(settings.quality === 'low' ? 0.5 : 0.65, (s) => {
-    pixelScale = s;
-    applyPixelRatio();
-  });
+  const adaptive = new AdaptiveQuality(
+    0.5,
+    (s) => {
+      pixelScale = s;
+      applyPixelRatio();
+    },
+    post ? [{ off: () => (post.on = false), on: () => (post.on = true) }] : [],
+  );
   window.addEventListener('resize', applyPixelRatio);
 
   const hud = new HUD(
@@ -46,7 +56,7 @@ async function boot(): Promise<void> {
       restart: () => newGame(game.diff),
       openMenu: () => hud.toggleMenu(true),
       settingsChanged: (s: Settings) => {
-        const reload = s.renderer !== settings.renderer || s.quality !== settings.quality;
+        const reload = s.quality !== settings.quality;
         Object.assign(settings, s);
         saveSettings(s);
         sfx.enabled = s.sound;
@@ -54,7 +64,7 @@ async function boot(): Promise<void> {
       },
     },
     settings,
-    () => info.note ?? (info.backend === 'webgpu' ? '渲染器：WebGPU' : '渲染器：WebGL'),
+    () => (info.backend === 'webgpu' ? '渲染：WebGPU' : '渲染：WebGL 2'),
   );
 
   function wire(g: Game): void {
@@ -141,6 +151,12 @@ async function boot(): Promise<void> {
     }
   });
 
+  try {
+    // Don't let a slow/stalled precompile (e.g. a backgrounded tab) block the first frame.
+    await Promise.race([renderer.compileAsync(view.world.scene, view.rig.camera), new Promise((r) => setTimeout(r, 1500))]);
+  } catch (e) {
+    console.warn('shader precompile failed', e);
+  }
   setInterval(() => hud.tick(), 100);
 
   let last = performance.now();
@@ -149,17 +165,17 @@ async function boot(): Promise<void> {
     const dtMs = t - last;
     last = t;
     const dt = Math.min(dtMs / 1000, 0.1);
-    const need = view.update(dt, renderer) || continuous || stats.shown;
+    const need = view.update(dt) || continuous || animated || stats.shown;
     if (need) {
-      renderer.render(view.world.scene, view.rig.camera);
+      if (post?.on) post.render();
+      else renderer.render(view.world.scene, view.rig.camera);
       adaptive.sample(dtMs, stats.vsyncMs);
     }
-    stats.extra = `${info.backend}  dpr×${pixelScale.toFixed(2)}  draws ${renderer.info.render.calls}  tris ${renderer.info.render.triangles}`;
+    stats.extra = `${info.backend}${post?.on ? '+bloom' : ''}  dpr×${pixelScale.toFixed(2)}  draws ${renderer.info.render.calls}  tris ${renderer.info.render.triangles}`;
     stats.frame(dtMs, need);
   });
 
   if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__sw = { game, view, renderer, stats, newGame };
-  if (info.note) hud.toast(info.note);
 }
 
 void boot();
