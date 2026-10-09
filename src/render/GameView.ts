@@ -52,6 +52,9 @@ export class GameView {
   private readonly ground: THREE.Mesh;
   private readonly hover: THREE.Mesh;
   private hoverCell = -1;
+  /** Pulsing rings marking the opening cell of a shared challenge. */
+  private readonly startRings: THREE.Mesh[] = [];
+  private startCell = -1;
   private celebrateUntil = 0;
   private nextFirework = 0;
   private lastYaw = 0;
@@ -86,7 +89,14 @@ export class GameView {
     );
     this.hover.visible = false;
     this.hover.renderOrder = 5;
-    this.world.scene.add(this.ground, this.hover);
+    const ringGeo = new THREE.RingGeometry(0.36, 0.46, 48).rotateX(-Math.PI / 2);
+    for (let i = 0; i < 2; i++) {
+      const r = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xffd86b, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
+      r.visible = false;
+      r.renderOrder = 6;
+      this.startRings.push(r);
+    }
+    this.world.scene.add(this.ground, this.hover, ...this.startRings);
   }
 
   requestFrame(n = 2): void {
@@ -138,6 +148,7 @@ export class GameView {
     this.celebrateUntil = 0;
     this.hoverCell = -1;
     this.hover.visible = false;
+    this.showStart(-1);
     this.applyAge(0);
     this.world.followTarget(0, 0);
     this.requestFrame(4);
@@ -149,8 +160,7 @@ export class GameView {
     const g = this.game;
     const b = g.board;
     const now = this.now;
-    // Expire any marker (e.g. the challenge start cell) sitting on a tile that is now open.
-    for (const m of this.markerTimers) if (b.state[m.cell] === REVEALED) m.until = 0;
+    if (this.startCell >= 0 && b.state[this.startCell] === REVEALED) this.showStart(-1);
     for (let k = 0; k < count; k++) {
       const c = cells[k];
       const delay = Math.min(dist[k] * 0.024, 1.6);
@@ -266,6 +276,16 @@ export class GameView {
     this.requestFrame(2);
   }
 
+  /** Mark (or with -1 unmark) the cell the player has to open first. */
+  showStart(cell: number): void {
+    this.startCell = cell;
+    for (const r of this.startRings) {
+      r.visible = cell >= 0;
+      if (cell >= 0) r.position.set(this.tiles.centerX(cell), HIDDEN_H + 0.05, this.tiles.centerZ(cell));
+    }
+    this.requestFrame(4);
+  }
+
   updateHover(): void {
     const cell = this.hoverCell;
     if (cell < 0 || !this.game || this.game.over) {
@@ -315,6 +335,15 @@ export class GameView {
       const x = this.rig.targetX + (Math.random() - 0.5) * Math.min(b2.width, 24);
       const z = this.rig.targetZ + (Math.random() - 0.5) * Math.min(b2.height, 16);
       this.effects.burst(x, 2 + Math.random() * 2, z, 36, FIREWORK, 4, 0.12);
+    }
+
+    if (this.startCell >= 0) {
+      this.startRings.forEach((r, i) => {
+        const ph = (now * 0.8 + i * 0.5) % 1;
+        r.scale.setScalar(0.8 + ph * 1.1);
+        (r.material as THREE.MeshBasicMaterial).opacity = 1 - ph;
+      });
+      dirty = true;
     }
 
     const animating = a || b || c || e || this.effects.active || now < this.celebrateUntil;

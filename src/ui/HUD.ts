@@ -91,6 +91,7 @@ export class HUD {
     const ch = g.challenge;
     this.challengeEl.textContent = ch ? `⚔ ${t('challenge.banner', { s: (ch.t / 1000).toFixed(1) })}` : '';
     this.challengeEl.classList.toggle('show', !!ch);
+    this.toastEl.classList.toggle('below', !!ch);
     if (ch) this.toast(t('challenge.hint'));
     this.refresh();
     this.buildMenu();

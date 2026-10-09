@@ -59,8 +59,9 @@ button, select { font: inherit; color: var(--text); }
 .tip p.m { margin-top: 4px; color: var(--muted); font-size: 12px; }
 .toast { position: absolute; top: 76px; left: 50%; transform: translateX(-50%); padding: 8px 16px; opacity: 0; transition: opacity 0.25s; pointer-events: none !important; max-width: calc(100vw - 32px); text-align: center; font-family: var(--font-body); font-size: 15px; }
 .toast.show { opacity: 1; }
-.challenge { position: absolute; top: 120px; left: 50%; transform: translateX(-50%); padding: 6px 14px; display: none; pointer-events: none !important; font-family: var(--font-body); font-size: 14px; color: var(--gold); white-space: nowrap; }
+.challenge { position: absolute; top: 76px; left: 50%; transform: translateX(-50%); padding: 6px 14px; display: none; pointer-events: none !important; font-family: var(--font-body); font-size: 14px; color: var(--gold); white-space: nowrap; }
 .challenge.show { display: block; }
+.toast.below { top: 120px; }
 .end .vs { color: var(--gold); }
 .overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(10, 8, 4, 0.55); backdrop-filter: blur(3px); }
 .overlay.show { display: flex; }
@@ -101,6 +102,8 @@ button, select { font: inherit; color: var(--text); }
   html:lang(en) .act .sh { display: none; }
   .act small { font-size: 11px; }
   .toast { top: 130px; }
+  .challenge { top: 130px; }
+  .toast.below { top: 172px; }
   .grid .btn { min-height: 56px; }
 }
 .help a { color: var(--gold); text-decoration: none; }

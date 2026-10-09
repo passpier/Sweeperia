@@ -128,7 +128,7 @@ async function boot(): Promise<void> {
     view.load(game);
     game.challenge = ch ?? null;
     hud.setGame(game);
-    if (ch) view.onHighlight([ch.at], 3_600_000);
+    if (ch) view.showStart(ch.at);
     hud.toggleMenu(false);
     hud.hideEnd();
     view.requestFrame(4);
@@ -141,7 +141,7 @@ async function boot(): Promise<void> {
     track(`challenge/open/${challenge.diff}`);
     game.challenge = challenge;
     hud.setGame(game);
-    view.onHighlight([challenge.at], 3_600_000);
+    view.showStart(challenge.at);
   } else {
     hud.toggleMenu(true);
   }
