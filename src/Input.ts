@@ -27,6 +27,9 @@ export class Input {
     canvas.addEventListener('pointercancel', this.onCancel);
     canvas.addEventListener('pointerleave', () => h.hover(-1));
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    // iOS Safari starts text selection / magnifier on long-press; pointer events still fire after this.
+    canvas.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+    document.addEventListener('selectstart', (e) => e.preventDefault());
     canvas.addEventListener('wheel', this.onWheel, { passive: false });
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', (e) => this.rig().keys.delete(e.key.toLowerCase()));
@@ -50,6 +53,7 @@ export class Input {
         const d = this.down;
         if (!d || d.dragged || this.pinching) return;
         d.longFired = true;
+        window.getSelection()?.removeAllRanges();
         const cell = this.h.cellAt(d.x, d.y);
         if (cell >= 0) {
           this.h.flag(cell);
