@@ -4,7 +4,6 @@ export type Cost = Partial<Record<ResKey, number>>;
 
 export interface AgeDef {
   id: number;
-  name: string;
   /** Cost to advance INTO this age. */
   cost: Cost;
   /** Ground tint multiplier colours (revealed / hidden). */
@@ -18,21 +17,17 @@ export interface AgeDef {
 }
 
 export const AGES: readonly AgeDef[] = [
-  { id: 0, name: '石器時代', cost: {}, revealed: 0xb9a37a, hidden: 0x6f7a4c, sky: 0x9fc4d8, fog: 0xb7d2e0, sun: 0xffe2b0, accent: '#c9a36b' },
-  { id: 1, name: '青銅時代', cost: { food: 60, wood: 40 }, revealed: 0xc8b07e, hidden: 0x728354, sky: 0xa6cade, fog: 0xc4d9e3, sun: 0xffe6bc, accent: '#d08a43' },
-  { id: 2, name: '中世紀', cost: { food: 140, wood: 110, stone: 60 }, revealed: 0xaaa79a, hidden: 0x5f7a52, sky: 0x93b4cf, fog: 0xb1c7d6, sun: 0xfff0d2, accent: '#9aa7b8' },
-  { id: 3, name: '火藥時代', cost: { food: 260, wood: 180, stone: 140, gold: 60 }, revealed: 0x9a958d, hidden: 0x586b55, sky: 0x8aa0b5, fog: 0xa4b4c0, sun: 0xfff4e0, accent: '#c85a3a' },
-  { id: 4, name: '現代', cost: { food: 420, wood: 260, stone: 240, gold: 180 }, revealed: 0x8b8f94, hidden: 0x4f6360, sky: 0x7fa0c2, fog: 0x9db2c4, sun: 0xeef4ff, accent: '#4aa3df' },
+  { id: 0, cost: {}, revealed: 0xb9a37a, hidden: 0x6f7a4c, sky: 0x9fc4d8, fog: 0xb7d2e0, sun: 0xffe2b0, accent: '#c9a36b' },
+  { id: 1, cost: { food: 60, wood: 40 }, revealed: 0xc8b07e, hidden: 0x728354, sky: 0xa6cade, fog: 0xc4d9e3, sun: 0xffe6bc, accent: '#d08a43' },
+  { id: 2, cost: { food: 140, wood: 110, stone: 60 }, revealed: 0xaaa79a, hidden: 0x5f7a52, sky: 0x93b4cf, fog: 0xb1c7d6, sun: 0xfff0d2, accent: '#9aa7b8' },
+  { id: 3, cost: { food: 260, wood: 180, stone: 140, gold: 60 }, revealed: 0x9a958d, hidden: 0x586b55, sky: 0x8aa0b5, fog: 0xa4b4c0, sun: 0xfff4e0, accent: '#c85a3a' },
+  { id: 4, cost: { food: 420, wood: 260, stone: 240, gold: 180 }, revealed: 0x8b8f94, hidden: 0x4f6360, sky: 0x7fa0c2, fog: 0x9db2c4, sun: 0xeef4ff, accent: '#4aa3df' },
 ];
 
 export const MAX_AGE = AGES.length - 1;
 
 export interface AbilityDef {
   id: 'scout' | 'wall' | 'engineer' | 'radar';
-  name: string;
-  desc: string;
-  /** One-line label shown on the button itself (mobile has no hover). */
-  short: string;
   minAge: number;
   cost: Cost;
   cooldownMs: number;
@@ -41,8 +36,8 @@ export interface AbilityDef {
 }
 
 export const ABILITIES: readonly AbilityDef[] = [
-  { id: 'scout', short: '安全揭開一格', name: '斥候', desc: '安全揭開 1 格', minAge: 1, cost: { food: 30, wood: 10 }, cooldownMs: 8000, targeted: false },
-  { id: 'wall', short: '抵擋一次踩雷', name: '城牆', desc: '抵擋下一次踩雷 (最多 3 層)', minAge: 2, cost: { stone: 40, wood: 30 }, cooldownMs: 6000, targeted: false },
-  { id: 'engineer', short: '偵測 5×5 雷數', name: '工兵', desc: '偵測 5x5 範圍內地雷數', minAge: 3, cost: { gold: 20, stone: 20 }, cooldownMs: 5000, targeted: true },
-  { id: 'radar', short: '標出 3×3 地雷', name: '雷達', desc: '高亮 3x3 內的地雷', minAge: 4, cost: { gold: 40, stone: 30 }, cooldownMs: 10000, targeted: true },
+  { id: 'scout', minAge: 1, cost: { food: 30, wood: 10 }, cooldownMs: 8000, targeted: false },
+  { id: 'wall', minAge: 2, cost: { stone: 40, wood: 30 }, cooldownMs: 6000, targeted: false },
+  { id: 'engineer', minAge: 3, cost: { gold: 20, stone: 20 }, cooldownMs: 5000, targeted: true },
+  { id: 'radar', minAge: 4, cost: { gold: 40, stone: 30 }, cooldownMs: 10000, targeted: true },
 ];

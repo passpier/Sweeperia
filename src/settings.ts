@@ -1,8 +1,12 @@
+import type { Lang } from './i18n';
+
 export type Quality = 'low' | 'balanced' | 'high';
 
 export interface Settings {
   quality: Quality;
   sound: boolean;
+  /** Unset until the player picks one; then the browser language decides. */
+  lang?: Lang;
 }
 
 const KEY = 'sweeperia.settings.v1';
@@ -19,6 +23,8 @@ export function loadSettings(): Settings {
   const q = new URLSearchParams(location.search);
   const ql = q.get('quality');
   if (ql === 'low' || ql === 'balanced' || ql === 'high') s.quality = ql;
+  const lg = q.get('lang');
+  if (lg === 'zh' || lg === 'en') s.lang = lg;
   return s;
 }
 

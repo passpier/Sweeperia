@@ -8,6 +8,7 @@
   --bad: #ff7a6b;
   --accent: #c9a36b;
   --font: "Cinzel", "Noto Serif TC", "Songti TC", "PMingLiU", Georgia, serif;
+  --font-body: "EB Garamond", "Noto Serif TC", "Songti TC", "PMingLiU", Georgia, serif;
   font-family: var(--font);
 }
 * { box-sizing: border-box; }
@@ -44,34 +45,37 @@ button, select { font: inherit; color: var(--text); }
 .act .emb { position: absolute; inset: 4px 0 auto 0; margin: auto; width: 56px; height: 56px; color: var(--accent); opacity: 0.38; pointer-events: none; }
 .act .emb svg { width: 100%; height: 100%; }
 .act .nm { position: relative; white-space: nowrap; font-size: 15px; font-weight: 700; letter-spacing: 1px; text-shadow: 0 1px 3px #000, 0 0 6px #000; }
-.act .sh { position: relative; font-style: normal; font-size: 11px; color: var(--text); opacity: 0.85; text-shadow: 0 1px 2px #000; }
-.act small { position: relative; display: block; color: var(--muted); font-size: 11px; text-shadow: 0 1px 2px #000; min-height: 14px; }
+.act .sh { position: relative; font-family: var(--font-body); font-style: normal; font-size: 11px; color: var(--text); opacity: 0.85; text-shadow: 0 1px 2px #000; }
+.act small { position: relative; display: block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-body); color: var(--muted); font-size: 11px; text-shadow: 0 1px 2px #000; min-height: 14px; }
 .act.locked .emb { filter: grayscale(1); opacity: 0.2; }
 .act .cd { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--gold); width: 0; }
 .act.active { outline: 2px solid #5ac8ff; }
 .act .key { position: absolute; top: 3px; right: 6px; font-size: 11px; color: var(--muted); }
 .cost.no { color: var(--bad); }
-.tip { position: absolute; max-width: min(300px, calc(100vw - 16px)); padding: 10px 14px; font-size: 13px; line-height: 1.5; opacity: 0; pointer-events: none !important; transition: opacity 0.15s; z-index: 5; }
+.tip { font-family: var(--font-body); position: absolute; max-width: min(300px, calc(100vw - 16px)); padding: 10px 14px; font-size: 13px; line-height: 1.5; opacity: 0; pointer-events: none !important; transition: opacity 0.15s; z-index: 5; }
 .tip.show { opacity: 1; }
-.tip h4 { margin: 0 0 4px; color: var(--gold); font-size: 15px; letter-spacing: 1px; }
+.tip h4 { font-family: var(--font); margin: 0 0 4px; color: var(--gold); font-size: 15px; letter-spacing: 1px; }
 .tip p { margin: 0; }
 .tip p.m { margin-top: 4px; color: var(--muted); font-size: 12px; }
-.toast { position: absolute; top: 76px; left: 50%; transform: translateX(-50%); padding: 8px 16px; opacity: 0; transition: opacity 0.25s; pointer-events: none !important; white-space: nowrap; }
+.toast { position: absolute; top: 76px; left: 50%; transform: translateX(-50%); padding: 8px 16px; opacity: 0; transition: opacity 0.25s; pointer-events: none !important; max-width: calc(100vw - 32px); text-align: center; font-family: var(--font-body); font-size: 15px; }
 .toast.show { opacity: 1; }
 .overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(10, 8, 4, 0.55); backdrop-filter: blur(3px); }
 .overlay.show { display: flex; }
 .dialog { width: min(480px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow: auto; padding: 20px 22px; }
 .dialog h1 { margin: 0 0 4px; color: var(--gold); font-size: 30px; letter-spacing: 5px; text-align: center; }
-.dialog > p { margin: 0 0 14px; color: var(--muted); font-size: 14px; text-align: center; }
+.dialog > p { margin: 0 0 14px; color: var(--muted); font-family: var(--font-body); font-size: 16px; text-align: center; }
 .laurel { width: 44px; height: 44px; margin: 0 auto -2px; color: var(--gold); }
 .laurel svg { width: 100%; height: 100%; }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
 .grid .btn { text-align: left; }
 .grid .btn.sel { outline: 2px solid var(--gold); }
-.grid .btn small { display: block; color: var(--muted); font-size: 11px; }
-.row { display: flex; gap: 10px; align-items: center; justify-content: space-between; margin: 8px 0; font-size: 14px; }
-.row select { background: #2c2314; border: 1px solid var(--panel-edge); border-radius: 4px; padding: 5px 8px; min-height: 40px; }
-.help { font-size: 12px; color: var(--muted); line-height: 1.6; margin-top: 12px; }
+.grid .btn.wide { grid-column: 1 / -1; text-align: center; text-decoration: none; color: var(--text); display: flex; align-items: center; justify-content: center; }
+.grid .btn b { font-size: 15px; font-weight: 700; }
+.grid .btn .sz { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.grid .btn small { display: block; color: var(--muted); font-family: var(--font-body); font-size: 13px; }
+.row { display: flex; gap: 10px; align-items: center; justify-content: space-between; margin: 8px 0; font-family: var(--font-body); font-size: 16px; }
+.row select { font-family: var(--font-body); background: #2c2314; border: 1px solid var(--panel-edge); border-radius: 4px; padding: 5px 8px; min-height: 40px; }
+.help { font-family: var(--font-body); font-size: 14px; color: var(--muted); line-height: 1.6; margin-top: 12px; }
 .help kbd { background: #2c2314; border: 1px solid var(--panel-edge); border-radius: 3px; padding: 0 4px; font-size: 11px; }
 .end { text-align: center; }
 .end h1 { font-size: 36px; }
@@ -87,11 +91,12 @@ button, select { font: inherit; color: var(--text); }
   .res span { min-width: 0; gap: 3px; }
   .age { grid-area: age; font-size: 13px; padding: 8px 10px; align-self: stretch; display: flex; align-items: center; }
   .bottom { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; padding: 0 6px; }
-  .act { width: auto; height: 78px; padding: 6px 2px 8px; }
+  .act { width: auto; height: 88px; padding: 6px 2px 8px; }
   .act .emb { width: 42px; height: 42px; }
-  .act .nm { font-size: 13px; letter-spacing: 0; }
-  .act .sh { font-size: 10px; line-height: 1.15; }
-  .act small { font-size: 10px; }
+  .act .nm { font-size: 13px; letter-spacing: 0; white-space: normal; text-align: center; line-height: 1.05; padding: 0 10px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+  .act .sh { font-size: 11px; line-height: 1.15; }
+  html:lang(en) .act .sh { display: none; }
+  .act small { font-size: 11px; }
   .toast { top: 130px; }
   .grid .btn { min-height: 56px; }
 }

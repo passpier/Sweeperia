@@ -2,12 +2,12 @@ import { Board, FLAGGED, HIDDEN, REVEALED } from './core/Board';
 import { generateTerrain } from './core/Terrain';
 import { ABILITIES, AGES, MAX_AGE, type AbilityDef } from './empire/Ages';
 import { Economy } from './empire/Economy';
+import { t, type StrKey } from './i18n';
 
 export type Mode = 'classic' | 'empire';
 
 export interface Difficulty {
   id: string;
-  label: string;
   w: number;
   h: number;
   mines: number;
@@ -15,12 +15,12 @@ export interface Difficulty {
 }
 
 export const DIFFICULTIES: readonly Difficulty[] = [
-  { id: 'easy', label: '初級 9×9', w: 9, h: 9, mines: 10, mode: 'classic' },
-  { id: 'medium', label: '中級 16×16', w: 16, h: 16, mines: 40, mode: 'classic' },
-  { id: 'hard', label: '高級 30×16', w: 30, h: 16, mines: 99, mode: 'classic' },
-  { id: 'empire40', label: '帝國 40×40', w: 40, h: 40, mines: 240, mode: 'empire' },
-  { id: 'empire70', label: '帝國 70×70', w: 70, h: 70, mines: 735, mode: 'empire' },
-  { id: 'empire100', label: '帝國 100×100', w: 100, h: 100, mines: 1500, mode: 'empire' },
+  { id: 'easy', w: 9, h: 9, mines: 10, mode: 'classic' },
+  { id: 'medium', w: 16, h: 16, mines: 40, mode: 'classic' },
+  { id: 'hard', w: 30, h: 16, mines: 99, mode: 'classic' },
+  { id: 'empire40', w: 40, h: 40, mines: 240, mode: 'empire' },
+  { id: 'empire70', w: 70, h: 70, mines: 735, mode: 'empire' },
+  { id: 'empire100', w: 100, h: 100, mines: 1500, mode: 'empire' },
 ];
 
 /** Callbacks the renderer / HUD subscribe to. All optional. */
@@ -101,7 +101,7 @@ export class Game {
       b.defuse(i);
       this.events.shielded?.(i);
       this.events.flagChanged?.(i, true);
-      this.events.toast?.('城牆擋下了伏兵！');
+      this.events.toast?.(t('toast.wall'));
       this.events.hud?.();
       return;
     }
@@ -170,7 +170,7 @@ export class Game {
     this.economy.spend(n.cost);
     this.age = n.id;
     this.events.ageChanged?.(this.age);
-    this.events.toast?.(`進入 ${n.name}！`);
+    this.events.toast?.(t('toast.age', { name: t(`age.${n.id}` as StrKey) }));
     this.events.hud?.();
   }
 
@@ -193,12 +193,12 @@ export class Game {
       return;
     }
     if (a.id === 'wall') {
-      if (this.shield >= 3) return this.events.toast?.('城牆已達上限');
+      if (this.shield >= 3) return this.events.toast?.(t('toast.wallMax'));
       this.commit(a);
       this.shield++;
     } else if (a.id === 'scout') {
       const cell = this.pickScoutCell();
-      if (cell < 0) return this.events.toast?.('沒有可偵察的格子');
+      if (cell < 0) return this.events.toast?.(t('toast.noScout'));
       this.commit(a);
       if (!this.startedAt) this.startedAt = performance.now();
       this.afterReveal(this.board.reveal(cell));
@@ -232,7 +232,7 @@ export class Game {
     const b = this.board;
     if (!b.placed) {
       this.targeting = null;
-      return this.events.toast?.('請先揭開一格');
+      return this.events.toast?.(t('toast.revealFirst'));
     }
     this.commit(a);
     this.targeting = null;
@@ -246,7 +246,7 @@ export class Game {
         if (b.mines[c]) cells.push(c);
       }
     }
-    if (a.id === 'engineer') this.events.toast?.(`5×5 範圍內有 ${cells.length} 顆地雷`);
+    if (a.id === 'engineer') this.events.toast?.(t('toast.engineer', { n: cells.length }));
     this.events.highlight?.(cells, a.id === 'engineer' ? 2500 : 4500);
     this.events.hud?.();
   }

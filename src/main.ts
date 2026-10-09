@@ -9,15 +9,22 @@ import { createRenderer } from './render/createRenderer';
 import { GameView } from './render/GameView';
 import { loadSettings, saveBest, saveSettings, type Quality, type Settings } from './settings';
 import { ABILITIES } from './empire/Ages';
+import { installErrorTracking, track, trackError } from './analytics';
+import { detectLang, diffLabel, setLang, t } from './i18n';
+import { captureBoard } from './share';
 import { HUD } from './ui/HUD';
 
 const DPR_CAP: Record<Quality, number> = { low: 1, balanced: 1.5, high: 2 };
 
 async function boot(): Promise<void> {
+  installErrorTracking();
   const settings = loadSettings();
+  setLang(settings.lang ?? detectLang());
+  track(`lang/${settings.lang ? 'chosen-' : 'auto-'}${settings.lang ?? detectLang()}`);
   const canvas = document.getElementById('view') as HTMLCanvasElement;
   const info = await createRenderer(canvas, settings.quality);
   const { renderer } = info;
+  track(`renderer/${info.backend}`);
   gfx.detail = settings.quality !== 'low';
   const view = new GameView(renderer.domElement);
   const stats = new FrameStats();
@@ -49,14 +56,19 @@ async function boot(): Promise<void> {
   );
   window.addEventListener('resize', applyPixelRatio);
 
+  // The WebGL back buffer is only readable right after a render, so the win screenshot is taken from inside the render loop.
+  let winShot: Promise<Blob | null> = Promise.resolve(null);
+  let captureNext: ((c: HTMLCanvasElement) => void) | null = null;
+
   const hud = new HUD(
     game,
     {
       newGame: (id) => newGame(DIFFICULTIES.find((d) => d.id === id)!),
       restart: () => newGame(game.diff),
       openMenu: () => hud.toggleMenu(true),
+      winShot: () => winShot,
       settingsChanged: (s: Settings) => {
-        const reload = s.quality !== settings.quality;
+        const reload = s.quality !== settings.quality || s.lang !== settings.lang;
         Object.assign(settings, s);
         saveSettings(s);
         sfx.enabled = s.sound;
@@ -65,6 +77,7 @@ async function boot(): Promise<void> {
     },
     settings,
   );
+
 
   function wire(g: Game): void {
     const ev = g.events;
@@ -85,10 +98,25 @@ async function boot(): Promise<void> {
       sfx.shield();
     };
     ev.ended = (won) => {
+      track(`${won ? 'win' : 'lose'}/${g.diff.id}`);
       if (won) {
         saveBest(g.diff.id, g.elapsedMs);
         view.onWon();
         sfx.win();
+        winShot = new Promise((resolve) => {
+          const card = { title: 'SWEEPERIA', line: `${diffLabel(g.diff)} · ${t('end.time', { s: (g.elapsedMs / 1000).toFixed(1) })}` };
+          const giveUp = window.setTimeout(() => {
+            captureNext = null;
+            resolve(null);
+          }, 5000);
+          window.setTimeout(() => {
+            view.requestFrame(3);
+            captureNext = (c) => {
+              clearTimeout(giveUp);
+              void captureBoard(c, card).then(resolve);
+            };
+          }, 900);
+        });
       }
       hud.showEnd(won);
     };
@@ -108,6 +136,8 @@ async function boot(): Promise<void> {
   }
 
   function newGame(diff: Difficulty): void {
+    track(`start/${diff.id}`);
+    captureNext = null;
     game.reset(diff);
     wire(game);
     view.load(game);
@@ -169,6 +199,11 @@ async function boot(): Promise<void> {
       if (post?.on) post.render();
       else renderer.render(view.world.scene, view.rig.camera);
       adaptive.sample(dtMs, stats.vsyncMs);
+      if (captureNext) {
+        const cb = captureNext;
+        captureNext = null;
+        cb(renderer.domElement);
+      }
     }
     stats.extra = `${info.backend}${post?.on ? '+bloom' : ''}  dpr×${pixelScale.toFixed(2)}  draws ${renderer.info.render.calls}  tris ${renderer.info.render.triangles}`;
     stats.frame(dtMs, need);
@@ -177,4 +212,7 @@ async function boot(): Promise<void> {
   if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__sw = { game, view, renderer, stats, newGame };
 }
 
-void boot();
+boot().catch((e) => {
+  console.error(e);
+  trackError(`boot: ${(e as Error)?.message ?? e}`, (e as Error)?.stack);
+});

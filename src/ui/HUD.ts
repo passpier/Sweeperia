@@ -1,11 +1,17 @@
 import './hud.css';
 import { ABILITIES, AGES, MAX_AGE, RES, type Cost } from '../empire/Ages';
+import { diffLabel, diffName, getLang, t, type Lang, type StrKey } from '../i18n';
+import { shareResult } from '../share';
+import { track } from '../analytics';
 import { DIFFICULTIES, type Game } from '../Game';
 import { loadBest, type Settings } from '../settings';
 import { ABILITY_EMBLEMS, AGE_EMBLEMS, LAUREL, RESTART_ICON } from './emblems';
 
 const ICON = { food: '🌾', wood: '🪵', stone: '🪨', gold: '🪙' } as const;
-const NAME = { food: '食物', wood: '木材', stone: '石材', gold: '黃金' } as const;
+const ageName = (id: number) => t(`age.${id}` as StrKey);
+const abName = (id: string) => t(`ab.${id}.name` as StrKey);
+const abShort = (id: string) => t(`ab.${id}.short` as StrKey);
+const abDesc = (id: string) => t(`ab.${id}.desc` as StrKey);
 
 function el<T extends HTMLElement>(html: string): T {
   const t = document.createElement('template');
@@ -18,6 +24,8 @@ export interface HudActions {
   restart(): void;
   settingsChanged(s: Settings): void;
   openMenu(): void;
+  /** Board screenshot taken when the game was won (null if unavailable). */
+  winShot(): Promise<Blob | null>;
 }
 
 function fmtTime(ms: number): string {
@@ -31,7 +39,7 @@ export class HUD {
   private readonly resBox = el('<div class="panel res"></div>');
   private readonly timeEl = el('<b>000</b>');
   private readonly minesEl = el('<b>0</b>');
-  private readonly face = el<HTMLButtonElement>(`<button class="face" title="重新開始 (R)" aria-label="重新開始">${RESTART_ICON}</button>`);
+  private readonly face = el<HTMLButtonElement>(`<button class="face" title="${t('hud.restart')}" aria-label="${t('hud.restartAria')}">${RESTART_ICON}</button>`);
   private readonly ageEl = el('<div class="panel age"></div>');
   private readonly bottom = el('<div class="bottom"></div>');
   private readonly tip = el('<div class="panel tip"></div>');
@@ -49,13 +57,13 @@ export class HUD {
   constructor(private game: Game, private readonly actions: HudActions, private settings: Settings) {
     const top = el('<div class="top"></div>');
     for (const r of RES) {
-      const s = el(`<span title="${NAME[r]}">${ICON[r]} <i>0</i></span>`);
+      const s = el(`<span title="${t(`res.${r}` as StrKey)}">${ICON[r]} <i>0</i></span>`);
       this.resEls[r] = s.querySelector('i')!;
       this.resBox.appendChild(s);
     }
     const center = el('<div class="panel center"></div>');
     center.append(el('<span class="ico">💣</span>'), this.minesEl, this.face, this.timeEl, el('<span class="ico">⏱</span>'));
-    const menuBtn = el<HTMLButtonElement>('<button class="btn" title="選單 (Esc)">☰</button>');
+    const menuBtn = el<HTMLButtonElement>(`<button class="btn" title="${t('hud.menu')}">☰</button>`);
     menuBtn.onclick = () => actions.openMenu();
     const right = el('<div class="right"></div>');
     right.append(this.ageEl, menuBtn);
@@ -65,7 +73,7 @@ export class HUD {
     this.attachTip(this.advBtn, () => this.advTip());
     this.bottom.appendChild(this.advBtn);
     ABILITIES.forEach((a, i) => {
-      const b = el<HTMLButtonElement>(`<button class="btn panel act"><span class="emb">${ABILITY_EMBLEMS[a.id]}</span><span class="key">${i + 1}</span><b class="nm">${a.name}</b><em class="sh">${a.short}</em><small></small><div class="cd"></div></button>`);
+      const b = el<HTMLButtonElement>(`<button class="btn panel act"><span class="emb">${ABILITY_EMBLEMS[a.id]}</span><span class="key">${i + 1}</span><b class="nm">${abName(a.id)}</b><em class="sh">${abShort(a.id)}</em><small></small><div class="cd"></div></button>`);
       b.onclick = () => this.guard(b, () => this.game.useAbility(a.id));
       this.attachTip(b, () => this.abilityTip(i));
       this.actBtns.push(b);
@@ -116,14 +124,14 @@ export class HUD {
   private abilityTip(i: number): string {
     const a = ABILITIES[i];
     const locked = this.game.age < a.minAge;
-    return `<h4>${a.name}${locked ? ` · 🔒 ${AGES[a.minAge].name}解鎖` : ''}</h4><p>${a.desc}</p><p class="m">費用 ${this.costHtml(a.cost)} · 冷卻 ${a.cooldownMs / 1000} 秒${a.targeted ? ' · 需點選目標格' : ''} · 快捷鍵 ${i + 1}</p>`;
+    return `<h4>${abName(a.id)}${locked ? ` · 🔒 ${t('hud.unlocksAt', { age: ageName(a.minAge) })}` : ''}</h4><p>${abDesc(a.id)}</p><p class="m">${t('hud.cost')} ${this.costHtml(a.cost)} · ${t('hud.cooldown', { s: a.cooldownMs / 1000 })}${a.targeted ? ` · ${t('hud.needTarget')}` : ''} · ${t('hud.hotkey', { k: i + 1 })}</p>`;
   }
 
   private advTip(): string {
     const next = this.game.nextAge;
-    if (!next) return `<h4>${AGES[MAX_AGE].name}</h4><p>已達最高時代</p>`;
-    const unlocks = ABILITIES.filter((a) => a.minAge === next.id).map((a) => a.name);
-    return `<h4>升級至 ${next.name}</h4><p>${unlocks.length ? `解鎖技能：${unlocks.join('、')}` : '地貌與天色改變，開啟新時代'}</p><p class="m">費用 ${this.costHtml(next.cost)} · 快捷鍵 G</p>`;
+    if (!next) return `<h4>${ageName(MAX_AGE)}</h4><p>${t('hud.maxAge')}</p>`;
+    const unlocks = ABILITIES.filter((a) => a.minAge === next.id).map((a) => abName(a.id));
+    return `<h4>${t('hud.upgradeTo', { name: ageName(next.id) })}</h4><p>${unlocks.length ? t('hud.unlocks', { list: unlocks.join(t('hud.listSep')) }) : t('hud.unlocksNone')}</p><p class="m">${t('hud.cost')} ${this.costHtml(next.cost)} · ${t('hud.hotkey', { k: 'G' })}</p>`;
   }
 
   /** Hover tooltip on mouse; ~0.4s long-press on touch (the release then does not trigger the button). */
@@ -176,24 +184,24 @@ export class HUD {
     this.face.dataset.state = g.board.status;
     if (!empire) return;
     for (const r of RES) this.resEls[r].textContent = String(e[r]);
-    this.ageEl.textContent = `${AGES[g.age].name}${g.shield ? `  🛡${g.shield}` : ''}`;
+    this.ageEl.textContent = `${ageName(g.age)}${g.shield ? `  🛡${g.shield}` : ''}`;
     const next = g.nextAge;
     const key = `${g.age}|${g.shield}|${e.food}|${e.wood}|${e.stone}|${e.gold}|${g.targeting?.id}|${g.over}`;
     if (key === this.lastKey) return;
     this.lastKey = key;
     if (next) {
-      this.advBtn.innerHTML = `<span class="emb">${AGE_EMBLEMS[next.id]}</span><span class="key">G</span><b class="nm">${next.name}</b><em class="sh">升級時代</em><small>${this.costHtml(next.cost)}</small><div class="cd"></div>`;
+      this.advBtn.innerHTML = `<span class="emb">${AGE_EMBLEMS[next.id]}</span><span class="key">G</span><b class="nm">${ageName(next.id)}</b><em class="sh">${t('hud.advance')}</em><small>${this.costHtml(next.cost)}</small><div class="cd"></div>`;
       this.advBtn.style.setProperty('--accent', next.accent);
       this.setOff(this.advBtn, !g.canAdvance());
     } else {
-      this.advBtn.innerHTML = `<span class="emb">${AGE_EMBLEMS[MAX_AGE]}</span><b class="nm">${AGES[MAX_AGE].name}</b><em class="sh">已達最高時代</em><small></small>`;
+      this.advBtn.innerHTML = `<span class="emb">${AGE_EMBLEMS[MAX_AGE]}</span><b class="nm">${ageName(MAX_AGE)}</b><em class="sh">${t('hud.maxAge')}</em><small></small>`;
       this.advBtn.style.setProperty('--accent', AGES[MAX_AGE].accent);
       this.setOff(this.advBtn, true);
     }
     ABILITIES.forEach((a, i) => {
       const b = this.actBtns[i];
       const locked = g.age < a.minAge;
-      b.querySelector('small')!.innerHTML = locked ? `🔒 ${AGES[a.minAge].name}` : this.costHtml(a.cost);
+      b.querySelector('small')!.innerHTML = locked ? `🔒 ${ageName(a.minAge)}` : this.costHtml(a.cost);
       this.setOff(b, locked || !e.canAfford(a.cost) || g.over);
       b.classList.toggle('locked', locked);
       b.classList.toggle('active', g.targeting === a);
@@ -219,18 +227,47 @@ export class HUD {
   showEnd(won: boolean): void {
     const g = this.game;
     const best = loadBest(g.diff.id);
-    const t = g.elapsedMs;
+    const t0 = g.elapsedMs;
     const empire = g.empire;
+    const secs = (t0 / 1000).toFixed(1);
     this.endBox.innerHTML = '';
-    const box = el(`<div class="panel dialog end"><h1>${won ? 'VICTORIA' : 'CLADES'}</h1><p class="sub">${won ? '勝利！' : '失敗'}</p>
-      <p>${g.diff.label} · 用時 ${(t / 1000).toFixed(1)} 秒${won && best !== null ? ` · 最佳 ${(best / 1000).toFixed(1)} 秒` : ''}</p>
-      ${empire ? `<p>${AGES[g.age].name} · 資源 ${g.economy.total}${won ? ` · 分數 ${this.score()}` : ''}</p>` : ''}
-      <div class="grid"><button class="btn" data-a="again">再來一局</button><button class="btn" data-a="menu">選單</button></div></div>`);
+    const box = el(`<div class="panel dialog end"><h1>${won ? 'VICTORIA' : 'CLADES'}</h1><p class="sub">${won ? t('end.win') : t('end.lose')}</p>
+      <p>${diffLabel(g.diff)} · ${t('end.time', { s: secs })}${won && best !== null ? ` · ${t('end.best', { s: (best / 1000).toFixed(1) })}` : ''}</p>
+      ${empire ? `<p>${ageName(g.age)} · ${t('end.resources', { n: g.economy.total })}${won ? ` · ${t('end.score', { n: this.score() })}` : ''}</p>` : ''}
+      <div class="grid"><button class="btn" data-a="again">${t('end.again')}</button><button class="btn" data-a="menu">${t('end.menu')}</button>
+      ${won ? `<button class="btn wide" data-a="share">🏆 ${t('end.share')}</button>` : ''}</div></div>`);
     box.querySelector('[data-a=again]')!.addEventListener('click', () => this.actions.restart());
     box.querySelector('[data-a=menu]')!.addEventListener('click', () => this.actions.openMenu());
+    if (won) {
+      const shot = this.actions.winShot();
+      const text = t('end.shareText', { diff: diffLabel(g.diff), s: secs, score: empire ? t('end.shareScore', { n: this.score() }) : '' });
+      const url = `${location.origin}${location.pathname}?diff=${g.diff.id}`;
+      box.querySelector('[data-a=share]')!.addEventListener('click', async () => {
+        const blob = await shot;
+        const method = await shareResult({ text, url, blob });
+        if (method === 'cancel') return;
+        track(`share/${method}`);
+        if (method === 'copy') {
+          this.toast(t('toast.copied'));
+          if (blob) this.offerDownload(box, blob);
+        }
+      });
+    }
     this.endBox.appendChild(box);
     clearTimeout(this.endTimer);
     this.endTimer = window.setTimeout(() => this.endBox.classList.add('show'), won ? 1200 : 1500);
+  }
+
+  /** Browsers without a share sheet (e.g. desktop Firefox): let the player save the image to post manually. */
+  private offerDownload(box: HTMLElement, blob: Blob): void {
+    if (box.querySelector('[data-a=download]')) return;
+    const a = document.createElement('a');
+    a.className = 'btn wide';
+    a.dataset.a = 'download';
+    a.textContent = `⬇ ${t('end.download')}`;
+    a.href = URL.createObjectURL(blob);
+    a.download = 'sweeperia.png';
+    box.querySelector('.grid')!.appendChild(a);
   }
 
   private score(): number {
@@ -256,19 +293,20 @@ export class HUD {
   private buildMenu(): void {
     const s = this.settings;
     this.menu.innerHTML = '';
-    const d = el(`<div class="panel dialog"><div class="laurel">${LAUREL}</div><h1>SWEEPERIA</h1><p>帝國掃雷 — 從石器時代揭開世界</p>
+    const d = el(`<div class="panel dialog"><div class="laurel">${LAUREL}</div><h1>SWEEPERIA</h1><p>${t('menu.tagline')}</p>
       <div class="grid" id="diffs"></div>
-      <div class="row">畫質<select id="s-quality"><option value="high">高</option><option value="balanced">中</option><option value="low">低（最快）</option></select></div>
-      <div class="row">音效<select id="s-sound"><option value="1">開</option><option value="0">關</option></select></div>
-      <div class="row"><span></span><button class="btn" id="close">繼續</button></div>
-      <div class="help">左鍵 揭開 · 右鍵 插旗 · 中鍵/點數字 快速開格<br>
-      拖曳/<kbd>WASD</kbd> 移動 · 滾輪 縮放 · <kbd>Q</kbd><kbd>E</kbd> 旋轉 · <kbd>R</kbd> 重開<br>
-      帝國模式：<kbd>1</kbd>–<kbd>4</kbd> 技能、<kbd>G</kbd> 升級時代 · 手機：點按揭開、長按插旗<br>
+      <div class="row">${t('menu.quality')}<select id="s-quality"><option value="high">${t('menu.q.high')}</option><option value="balanced">${t('menu.q.balanced')}</option><option value="low">${t('menu.q.low')}</option></select></div>
+      <div class="row">${t('menu.sound')}<select id="s-sound"><option value="1">${t('menu.on')}</option><option value="0">${t('menu.off')}</option></select></div>
+      <div class="row">${t('menu.lang')}<select id="s-lang"><option value="zh">中文</option><option value="en">English</option></select></div>
+      <div class="row"><span></span><button class="btn" id="close">${t('menu.close')}</button></div>
+      <div class="help">${t('menu.help1')}<br>
+      ${t('menu.help2')}<br>
+      ${t('menu.help3')}<br>
       <a href="https://github.com/passpier/Sweeperia" target="_blank" rel="noopener">GitHub · passpier/Sweeperia</a></div></div>`);
     const grid = d.querySelector('#diffs')!;
     for (const df of DIFFICULTIES) {
       const best = loadBest(df.id);
-      const b = el<HTMLButtonElement>(`<button class="btn ${df.id === this.game.diff.id ? 'sel' : ''}">${df.label}<small>${df.mode === 'empire' ? '資源 · 時代 · 技能' : '經典規則'}${best !== null ? ` · 🏆${(best / 1000).toFixed(1)}s` : ''}</small></button>`);
+      const b = el<HTMLButtonElement>(`<button class="btn ${df.id === this.game.diff.id ? 'sel' : ''}"><b>${diffName(df)}</b> <span class="sz">${df.w}×${df.h}</span><small>${df.mode === 'empire' ? t('menu.modeEmpire') : t('menu.modeClassic')}${best !== null ? ` · 🏆${(best / 1000).toFixed(1)}s` : ''}</small></button>`);
       b.onclick = () => {
         this.actions.newGame(df.id);
         this.toggleMenu(false);
@@ -278,11 +316,12 @@ export class HUD {
     const sel = (id: string) => d.querySelector<HTMLSelectElement>(id)!;
     sel('#s-quality').value = s.quality;
     sel('#s-sound').value = s.sound ? '1' : '0';
+    sel('#s-lang').value = getLang();
     const change = () => {
-      this.settings = { quality: sel('#s-quality').value as Settings['quality'], sound: sel('#s-sound').value === '1' };
+      this.settings = { quality: sel('#s-quality').value as Settings['quality'], sound: sel('#s-sound').value === '1', lang: sel('#s-lang').value as Lang };
       this.actions.settingsChanged(this.settings);
     };
-    for (const id of ['#s-quality', '#s-sound']) sel(id).onchange = change;
+    for (const id of ['#s-quality', '#s-sound', '#s-lang']) sel(id).onchange = change;
     d.querySelector<HTMLElement>('#close')!.onclick = () => this.toggleMenu(false);
     this.menu.appendChild(d);
   }
