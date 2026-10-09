@@ -1,7 +1,7 @@
 import './hud.css';
 import { ABILITIES, AGES, MAX_AGE, RES, type Cost } from '../empire/Ages';
 import { diffLabel, diffName, getLang, t, type Lang, type StrKey } from '../i18n';
-import { shareResult } from '../share';
+import { buildChallengeUrl, canShareNatively, copyText, shareResult } from '../share';
 import { track } from '../analytics';
 import { DIFFICULTIES, type Game } from '../Game';
 import { loadBest, type Settings } from '../settings';
@@ -24,8 +24,6 @@ export interface HudActions {
   restart(): void;
   settingsChanged(s: Settings): void;
   openMenu(): void;
-  /** Board screenshot taken when the game was won (null if unavailable). */
-  winShot(): Promise<Blob | null>;
 }
 
 function fmtTime(ms: number): string {
@@ -45,6 +43,7 @@ export class HUD {
   private readonly tip = el('<div class="panel tip"></div>');
   private suppressClick = false;
   private readonly toastEl = el('<div class="panel toast"></div>');
+  private readonly challengeEl = el('<div class="panel challenge"></div>');
   private readonly menu = el('<div class="overlay"></div>');
   private readonly endBox = el('<div class="overlay"></div>');
   private readonly resEls = {} as Record<string, HTMLElement>;
@@ -80,7 +79,7 @@ export class HUD {
       this.bottom.appendChild(b);
     });
     this.face.onclick = () => actions.restart();
-    this.root.append(top, this.bottom, this.tip, this.toastEl, this.menu, this.endBox);
+    this.root.append(top, this.bottom, this.tip, this.toastEl, this.challengeEl, this.menu, this.endBox);
     this.buildMenu();
     this.refresh();
   }
@@ -89,6 +88,10 @@ export class HUD {
     this.game = g;
     this.endBox.classList.remove('show');
     this.lastKey = '';
+    const ch = g.challenge;
+    this.challengeEl.textContent = ch ? `⚔ ${t('challenge.banner', { s: (ch.t / 1000).toFixed(1) })}` : '';
+    this.challengeEl.classList.toggle('show', !!ch);
+    if (ch) this.toast(t('challenge.hint'));
     this.refresh();
     this.buildMenu();
   }
@@ -97,7 +100,7 @@ export class HUD {
     this.toastEl.textContent = msg;
     this.toastEl.classList.add('show');
     clearTimeout(this.toastTimer);
-    this.toastTimer = window.setTimeout(() => this.toastEl.classList.remove('show'), 2200);
+    this.toastTimer = window.setTimeout(() => this.toastEl.classList.remove('show'), 3500);
   }
 
   private costHtml(c: Cost): string {
@@ -230,27 +233,34 @@ export class HUD {
     const t0 = g.elapsedMs;
     const empire = g.empire;
     const secs = (t0 / 1000).toFixed(1);
+    const ch = g.challenge;
+    let versus = '';
+    if (ch) {
+      const target = (ch.t / 1000).toFixed(1);
+      if (!won) versus = t('challenge.lose', { s: target });
+      else if (t0 < ch.t) versus = t('challenge.win', { s: secs, target, d: ((ch.t - t0) / 1000).toFixed(1) });
+      else versus = t('challenge.slower', { s: secs, target, d: ((t0 - ch.t) / 1000).toFixed(1) });
+    }
     this.endBox.innerHTML = '';
     const box = el(`<div class="panel dialog end"><h1>${won ? 'VICTORIA' : 'CLADES'}</h1><p class="sub">${won ? t('end.win') : t('end.lose')}</p>
       <p>${diffLabel(g.diff)} · ${t('end.time', { s: secs })}${won && best !== null ? ` · ${t('end.best', { s: (best / 1000).toFixed(1) })}` : ''}</p>
       ${empire ? `<p>${ageName(g.age)} · ${t('end.resources', { n: g.economy.total })}${won ? ` · ${t('end.score', { n: this.score() })}` : ''}</p>` : ''}
-      <div class="grid"><button class="btn" data-a="again">${t('end.again')}</button><button class="btn" data-a="menu">${t('end.menu')}</button>
+      ${versus ? `<p class="vs">⚔ ${versus}</p>` : ''}
+      <div class="grid"><button class="btn" data-a="again">${ch ? t('challenge.retry') : t('end.again')}</button><button class="btn" data-a="menu">${t('end.menu')}</button>
       ${won ? `<button class="btn wide" data-a="share">🏆 ${t('end.share')}</button>` : ''}</div></div>`);
     box.querySelector('[data-a=again]')!.addEventListener('click', () => this.actions.restart());
     box.querySelector('[data-a=menu]')!.addEventListener('click', () => this.actions.openMenu());
     if (won) {
-      const shot = this.actions.winShot();
-      const text = t('end.shareText', { diff: diffLabel(g.diff), s: secs, score: empire ? t('end.shareScore', { n: this.score() }) : '' });
-      const url = `${location.origin}${location.pathname}?diff=${g.diff.id}`;
+      const score = empire ? this.score() : undefined;
+      const text = t('end.shareText', { diff: diffLabel(g.diff), s: secs, score: score !== undefined ? t('end.shareScore', { n: score }) : '' });
+      const url = buildChallengeUrl(`${location.origin}${location.pathname}`, { diff: g.diff.id, seed: g.seed, at: g.board.firstCell, t: t0, score });
       box.querySelector('[data-a=share]')!.addEventListener('click', async () => {
-        const blob = await shot;
-        const method = await shareResult({ text, url, blob });
-        if (method === 'cancel') return;
-        track(`share/${method}`);
-        if (method === 'copy') {
-          this.toast(t('toast.copied'));
-          if (blob) this.offerDownload(box, blob);
+        if (canShareNatively()) {
+          const method = await shareResult({ text, url });
+          if (method !== 'cancel') track(`share/${method}`);
+          return;
         }
+        this.showSharePanel(box, `${text} ${url}`);
       });
     }
     this.endBox.appendChild(box);
@@ -258,16 +268,27 @@ export class HUD {
     this.endTimer = window.setTimeout(() => this.endBox.classList.add('show'), won ? 1200 : 1500);
   }
 
-  /** Browsers without a share sheet (e.g. desktop Firefox): let the player save the image to post manually. */
-  private offerDownload(box: HTMLElement, blob: Blob): void {
-    if (box.querySelector('[data-a=download]')) return;
-    const a = document.createElement('a');
-    a.className = 'btn wide';
-    a.dataset.a = 'download';
-    a.textContent = `⬇ ${t('end.download')}`;
-    a.href = URL.createObjectURL(blob);
-    a.download = 'sweeperia.png';
-    box.querySelector('.grid')!.appendChild(a);
+  /** Desktop: show the message + link right in the dialog with a copy button. */
+  private showSharePanel(box: HTMLElement, msg: string): void {
+    let panel = box.querySelector<HTMLElement>('.sharebox');
+    if (!panel) {
+      panel = el(`<div class="sharebox"><textarea readonly rows="3"></textarea><button class="btn" data-a="copy">${t('end.copy')}</button></div>`);
+      box.appendChild(panel);
+      const ta = panel.querySelector('textarea')!;
+      ta.value = msg;
+      const copy = async () => {
+        ta.select();
+        const ok = (await copyText(msg)) || document.execCommand('copy');
+        if (ok) {
+          this.toast(t('toast.copied'));
+          track('share/copy');
+        }
+      };
+      panel.querySelector('button')!.addEventListener('click', () => void copy());
+      ta.addEventListener('focus', () => ta.select());
+      void copy();
+    }
+    panel.querySelector('textarea')!.select();
   }
 
   private score(): number {

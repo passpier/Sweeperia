@@ -1,70 +1,78 @@
-export interface ShareCard {
-  title: string;
-  line: string;
+import { DIFFICULTIES } from './Game';
+
+/** A finished run, encoded in a link so a friend can replay the exact same map. */
+export interface Challenge {
+  diff: string;
+  seed: number;
+  /** Opening cell the mines were laid out around. */
+  at: number;
+  /** Clearing time in ms. */
+  t: number;
+  score?: number;
 }
 
-/** Copy the (already rendered) game canvas into a PNG with a caption banner. Must run right after a render. */
-export function captureBoard(canvas: HTMLCanvasElement, card: ShareCard): Promise<Blob | null> {
-  return new Promise((resolve) => {
-    try {
-      const sw = canvas.width;
-      const sh = canvas.height;
-      if (!sw || !sh) return resolve(null);
-      const scale = Math.min(1, 1200 / sw);
-      const w = Math.round(sw * scale);
-      const h = Math.round(sh * scale);
-      const banner = Math.round(Math.max(64, w * 0.09));
-      const out = document.createElement('canvas');
-      out.width = w;
-      out.height = h + banner;
-      const g = out.getContext('2d')!;
-      g.drawImage(canvas, 0, 0, w, h);
-      g.fillStyle = '#1b1710';
-      g.fillRect(0, h, w, banner);
-      g.fillStyle = '#8a6a2f';
-      g.fillRect(0, h, w, 2);
-      g.textBaseline = 'middle';
-      g.fillStyle = '#e9c46a';
-      g.font = `700 ${Math.round(banner * 0.4)}px Cinzel, "Noto Serif TC", serif`;
-      g.fillText(card.title, banner * 0.35, h + banner * 0.33);
-      g.fillStyle = '#f3e9d2';
-      g.font = `500 ${Math.round(banner * 0.27)}px "Noto Serif TC", Cinzel, serif`;
-      g.fillText(card.line, banner * 0.35, h + banner * 0.72);
-      out.toBlob((b) => resolve(b), 'image/png');
-    } catch {
-      resolve(null);
-    }
-  });
+const INT = /^-?\d{1,10}$/;
+const MIN_MS = 1000;
+const MAX_MS = 86_400_000;
+const MAX_SCORE = 10_000_000;
+
+function int(v: string | null): number | null {
+  if (v === null || !INT.test(v)) return null;
+  return Number(v);
 }
 
-export type ShareMethod = 'file' | 'text' | 'copy' | 'cancel';
+export function buildChallengeUrl(base: string, c: Challenge): string {
+  const q = new URLSearchParams({ diff: c.diff, seed: String(c.seed), at: String(c.at), t: String(Math.round(c.t)) });
+  if (c.score !== undefined) q.set('score', String(c.score));
+  return `${base}?${q}`;
+}
 
+/** The query string is attacker-controlled: every field is checked, and any failure rejects the whole challenge. */
+export function parseChallenge(search: string): Challenge | null {
+  const q = new URLSearchParams(search);
+  const diff = DIFFICULTIES.find((d) => d.id === q.get('diff'));
+  const seed = int(q.get('seed'));
+  const at = int(q.get('at'));
+  const t = int(q.get('t'));
+  if (!diff || seed === null || at === null || t === null) return null;
+  if (seed < -(2 ** 31) || seed > 2 ** 31 - 1) return null;
+  if (at < 0 || at >= diff.w * diff.h) return null;
+  if (t < MIN_MS || t > MAX_MS) return null;
+  const c: Challenge = { diff: diff.id, seed, at, t };
+  if (q.has('score')) {
+    const score = int(q.get('score'));
+    if (score === null || score < 0 || score > MAX_SCORE) return null;
+    c.score = score;
+  }
+  return c;
+}
+
+export type ShareMethod = 'text' | 'copy' | 'cancel';
+
+/** The system share sheet is only worth it on phones/tablets; desktop sheets (e.g. macOS) are mostly noise. */
 export function canShareNatively(): boolean {
-  return typeof navigator.share === 'function';
+  return typeof navigator.share === 'function' && matchMedia('(pointer: coarse)').matches;
 }
 
-/** Share via the system sheet (with the image when supported), else copy text+link. */
-export async function shareResult(opts: { text: string; url: string; blob: Blob | null }): Promise<ShareMethod> {
-  const { text, url, blob } = opts;
+export async function copyText(s: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(s);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Share via the system sheet when available, else copy text + link. */
+export async function shareResult(opts: { text: string; url: string }): Promise<ShareMethod> {
+  const { text, url } = opts;
   if (canShareNatively()) {
     try {
-      if (blob) {
-        const file = new File([blob], 'sweeperia.png', { type: 'image/png' });
-        if (navigator.canShare?.({ files: [file] })) {
-          await navigator.share({ files: [file], text: `${text} ${url}` });
-          return 'file';
-        }
-      }
       await navigator.share({ text, url });
       return 'text';
     } catch (e) {
       if ((e as DOMException)?.name === 'AbortError') return 'cancel';
     }
   }
-  try {
-    await navigator.clipboard.writeText(`${text} ${url}`);
-    return 'copy';
-  } catch {
-    return 'cancel';
-  }
+  return (await copyText(`${text} ${url}`)) ? 'copy' : 'cancel';
 }

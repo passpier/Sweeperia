@@ -59,6 +59,9 @@ button, select { font: inherit; color: var(--text); }
 .tip p.m { margin-top: 4px; color: var(--muted); font-size: 12px; }
 .toast { position: absolute; top: 76px; left: 50%; transform: translateX(-50%); padding: 8px 16px; opacity: 0; transition: opacity 0.25s; pointer-events: none !important; max-width: calc(100vw - 32px); text-align: center; font-family: var(--font-body); font-size: 15px; }
 .toast.show { opacity: 1; }
+.challenge { position: absolute; top: 120px; left: 50%; transform: translateX(-50%); padding: 6px 14px; display: none; pointer-events: none !important; font-family: var(--font-body); font-size: 14px; color: var(--gold); white-space: nowrap; }
+.challenge.show { display: block; }
+.end .vs { color: var(--gold); }
 .overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(10, 8, 4, 0.55); backdrop-filter: blur(3px); }
 .overlay.show { display: flex; }
 .dialog { width: min(480px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow: auto; padding: 20px 22px; }
@@ -102,3 +105,6 @@ button, select { font: inherit; color: var(--text); }
 }
 .help a { color: var(--gold); text-decoration: none; }
 .help a:hover { text-decoration: underline; }
+
+.sharebox { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.sharebox textarea { width: 100%; box-sizing: border-box; resize: none; padding: 8px 10px; font: 14px/1.5 var(--font-body); color: var(--text, #f3e9d2); background: rgba(0, 0, 0, 0.35); border: 1px solid var(--gold); border-radius: 4px; }

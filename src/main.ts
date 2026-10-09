@@ -10,8 +10,8 @@ import { GameView } from './render/GameView';
 import { loadSettings, saveBest, saveSettings, type Quality, type Settings } from './settings';
 import { ABILITIES } from './empire/Ages';
 import { installErrorTracking, track, trackError } from './analytics';
-import { detectLang, diffLabel, setLang, t } from './i18n';
-import { captureBoard } from './share';
+import { detectLang, setLang } from './i18n';
+import { parseChallenge, type Challenge } from './share';
 import { HUD } from './ui/HUD';
 
 const DPR_CAP: Record<Quality, number> = { low: 1, balanced: 1.5, high: 2 };
@@ -35,8 +35,9 @@ async function boot(): Promise<void> {
   const animated = settings.quality !== 'low';
   const post = settings.quality === 'high' ? new Post(renderer, view.world.scene, view.rig.camera) : null;
 
-  const startDiff = DIFFICULTIES.find((d) => d.id === new URLSearchParams(location.search).get('diff')) ?? DIFFICULTIES[3];
-  const game = new Game(startDiff);
+  const challenge = parseChallenge(location.search);
+  const startDiff = DIFFICULTIES.find((d) => d.id === (challenge?.diff ?? new URLSearchParams(location.search).get('diff'))) ?? DIFFICULTIES[3];
+  const game = new Game(startDiff, challenge?.seed);
   const continuous = new URLSearchParams(location.search).has('continuous');
 
   let pixelScale = 1;
@@ -56,17 +57,16 @@ async function boot(): Promise<void> {
   );
   window.addEventListener('resize', applyPixelRatio);
 
-  // The WebGL back buffer is only readable right after a render, so the win screenshot is taken from inside the render loop.
-  let winShot: Promise<Blob | null> = Promise.resolve(null);
-  let captureNext: ((c: HTMLCanvasElement) => void) | null = null;
-
   const hud = new HUD(
     game,
     {
-      newGame: (id) => newGame(DIFFICULTIES.find((d) => d.id === id)!),
-      restart: () => newGame(game.diff),
+      newGame: (id) => {
+        // Picking a difficulty from the menu leaves the shared challenge.
+        if (game.challenge) history.replaceState(null, '', location.pathname);
+        newGame(DIFFICULTIES.find((d) => d.id === id)!);
+      },
+      restart: () => newGame(game.diff, game.challenge ?? undefined),
       openMenu: () => hud.toggleMenu(true),
-      winShot: () => winShot,
       settingsChanged: (s: Settings) => {
         const reload = s.quality !== settings.quality || s.lang !== settings.lang;
         Object.assign(settings, s);
@@ -103,20 +103,6 @@ async function boot(): Promise<void> {
         saveBest(g.diff.id, g.elapsedMs);
         view.onWon();
         sfx.win();
-        winShot = new Promise((resolve) => {
-          const card = { title: 'SWEEPERIA', line: `${diffLabel(g.diff)} · ${t('end.time', { s: (g.elapsedMs / 1000).toFixed(1) })}` };
-          const giveUp = window.setTimeout(() => {
-            captureNext = null;
-            resolve(null);
-          }, 5000);
-          window.setTimeout(() => {
-            view.requestFrame(3);
-            captureNext = (c) => {
-              clearTimeout(giveUp);
-              void captureBoard(c, card).then(resolve);
-            };
-          }, 900);
-        });
       }
       hud.showEnd(won);
     };
@@ -135,13 +121,14 @@ async function boot(): Promise<void> {
     };
   }
 
-  function newGame(diff: Difficulty): void {
+  function newGame(diff: Difficulty, ch?: Challenge): void {
     track(`start/${diff.id}`);
-    captureNext = null;
-    game.reset(diff);
+    game.reset(diff, ch?.seed);
     wire(game);
     view.load(game);
+    game.challenge = ch ?? null;
     hud.setGame(game);
+    if (ch) view.onHighlight([ch.at], 3_600_000);
     hud.toggleMenu(false);
     hud.hideEnd();
     view.requestFrame(4);
@@ -150,7 +137,14 @@ async function boot(): Promise<void> {
   wire(game);
   view.load(game);
   applyPixelRatio();
-  hud.toggleMenu(true);
+  if (challenge) {
+    track(`challenge/open/${challenge.diff}`);
+    game.challenge = challenge;
+    hud.setGame(game);
+    view.onHighlight([challenge.at], 3_600_000);
+  } else {
+    hud.toggleMenu(true);
+  }
 
   new Input(renderer.domElement, () => view.rig, {
     cellAt: (x, y) => view.picker.cellAt(x, y),
@@ -164,7 +158,7 @@ async function boot(): Promise<void> {
     key: (k) => {
       if (k === 'escape') hud.toggleMenu();
       else if (hud.menuOpen) return;
-      else if (k === 'r') newGame(game.diff);
+      else if (k === 'r') newGame(game.diff, game.challenge ?? undefined);
       else if (k === 'f3') stats.toggle();
       else if (k === 'q') view.rig.rotate(-1);
       else if (k === 'e') view.rig.rotate(1);
@@ -199,11 +193,6 @@ async function boot(): Promise<void> {
       if (post?.on) post.render();
       else renderer.render(view.world.scene, view.rig.camera);
       adaptive.sample(dtMs, stats.vsyncMs);
-      if (captureNext) {
-        const cb = captureNext;
-        captureNext = null;
-        cb(renderer.domElement);
-      }
     }
     stats.extra = `${info.backend}${post?.on ? '+bloom' : ''}  dpr×${pixelScale.toFixed(2)}  draws ${renderer.info.render.calls}  tris ${renderer.info.render.triangles}`;
     stats.frame(dtMs, need);

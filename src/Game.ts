@@ -3,6 +3,7 @@ import { generateTerrain } from './core/Terrain';
 import { ABILITIES, AGES, MAX_AGE, type AbilityDef } from './empire/Ages';
 import { Economy } from './empire/Economy';
 import { t, type StrKey } from './i18n';
+import type { Challenge } from './share';
 
 export type Mode = 'classic' | 'empire';
 
@@ -44,6 +45,8 @@ export class Game {
   shield = 0;
   startedAt = 0;
   endedAt = 0;
+  /** Set when this round was opened from a shared link. */
+  challenge: Challenge | null = null;
   /** Pending targeted ability, if the player is choosing a cell. */
   targeting: AbilityDef | null = null;
   readonly cooldownUntil: Record<string, number> = {};
@@ -61,6 +64,7 @@ export class Game {
   reset(diff: Difficulty, seed = (Math.random() * 2 ** 31) | 0): void {
     this.diff = diff;
     this.seed = seed;
+    this.challenge = null;
     this.board = new Board(diff.w, diff.h, diff.mines, seed);
     this.terrain = generateTerrain(diff.w, diff.h, seed);
     const e = this.economy;
@@ -92,6 +96,11 @@ export class Game {
     if (this.over) return;
     if (this.targeting) return this.useTargeted(i);
     const b = this.board;
+    // A shared challenge's mines depend on the opening cell, so the first reveal must be that one.
+    if (this.challenge && !b.placed && b.state[i] === HIDDEN && i !== this.challenge.at) {
+      this.events.toast?.(t('challenge.hint'));
+      return;
+    }
     if (b.state[i] === REVEALED) return this.chord(i);
     if (b.state[i] !== HIDDEN) return;
     if (!this.startedAt) this.startedAt = performance.now();

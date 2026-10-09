@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FLAGGED } from '../core/Board';
+import { FLAGGED, REVEALED } from '../core/Board';
 import { Terrain } from '../core/Terrain';
 import type { Game } from '../Game';
 import { hash01 } from './ease';
@@ -149,6 +149,8 @@ export class GameView {
     const g = this.game;
     const b = g.board;
     const now = this.now;
+    // Expire any marker (e.g. the challenge start cell) sitting on a tile that is now open.
+    for (const m of this.markerTimers) if (b.state[m.cell] === REVEALED) m.until = 0;
     for (let k = 0; k < count; k++) {
       const c = cells[k];
       const delay = Math.min(dist[k] * 0.024, 1.6);

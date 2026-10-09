@@ -28,6 +28,8 @@ export class Board {
 
   status: GameStatus = 'ready';
   placed = false;
+  /** The cell the mines were laid out around (the first reveal), or -1. */
+  firstCell = -1;
   flagCount = 0;
   revealedCount = 0;
   /** Index of the mine that ended the game, or -1. */
@@ -95,6 +97,7 @@ export class Board {
       }
       this.adj[i] = n;
     }
+    this.firstCell = safe;
     this.placed = true;
     this.status = 'playing';
   }

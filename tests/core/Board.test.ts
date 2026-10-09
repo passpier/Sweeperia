@@ -8,6 +8,15 @@ function countMines(b: Board): number {
 }
 
 describe('Board', () => {
+  it('same seed and opening cell give identical mines', () => {
+    const a = new Board(16, 16, 40, 777);
+    const b = new Board(16, 16, 40, 777);
+    a.reveal(100);
+    b.reveal(100);
+    expect(a.firstCell).toBe(100);
+    expect(Array.from(a.mines)).toEqual(Array.from(b.mines));
+  });
+
   it('first click is always safe with a clear 3x3', () => {
     for (let seed = 1; seed <= 50; seed++) {
       const b = new Board(9, 9, 10, seed);
