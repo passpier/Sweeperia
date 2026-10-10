@@ -20,24 +20,17 @@ async function boot(): Promise<void> {
   installErrorTracking();
   const settings = loadSettings();
   const bootEl = document.getElementById('boot');
-  const barEl = bootEl?.querySelector<HTMLElement>('i');
   const showBusy = (on: boolean) => {
     if (on) bootEl?.classList.remove('hide');
     else bootEl?.classList.add('hide');
   };
-  /** Takes over from the CSS "creep" animation that runs until the bundle is up. */
-  const setProgress = (p: number) => {
-    if (!barEl) return;
-    barEl.style.animation = 'none';
-    barEl.style.width = `${Math.round(p * 100)}%`;
-  };
   const yieldToPaint = () => new Promise<void>((r) => setTimeout(r, 0));
+  const nextPaint = () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
   setLang(settings.lang ?? detectLang());
   track(`lang/${settings.lang ? 'chosen-' : 'auto-'}${settings.lang ?? detectLang()}`);
   const canvas = document.getElementById('view') as HTMLCanvasElement;
   const info = await createRenderer(canvas, settings.quality);
   const { renderer } = info;
-  setProgress(0.4);
   track(`renderer/${info.backend}`);
   gfx.detail = settings.quality !== 'low';
   const view = new GameView(renderer.domElement);
@@ -140,53 +133,42 @@ async function boot(): Promise<void> {
 
   let busyToken = 0;
   /**
-   * Closes the dialogs and hides the old board right away (so it never flashes), then builds the new one in
-   * stages. The loading layer with a progress bar only appears if that takes longer than 250ms.
+   * Always covers the screen with the loading layer first (so the old board and HUD never show), waits until it
+   * has been painted, then builds the new board. The progress bar is CSS-only: it fades in after 250ms and keeps
+   * animating on the compositor while the main thread is busy.
    */
   function requestNewGame(diff: Difficulty, ch?: Challenge): void {
     const token = ++busyToken;
     hud.toggleMenu(false);
     hud.hideEnd();
-    const canvas = renderer.domElement;
-    canvas.style.visibility = 'hidden';
-    const timer = window.setTimeout(() => {
-      setProgress(0.05);
-      showBusy(true);
-    }, 250);
+    showBusy(true);
     void (async () => {
-      await yieldToPaint();
+      await nextPaint();
       if (token !== busyToken) return;
-      newGame(diff, ch, async (p) => {
-        setProgress(p);
-        await yieldToPaint();
-      });
+      await newGame(diff, ch, yieldToPaint);
     })().then(async () => {
       try {
         if (token !== busyToken) return;
-        setProgress(0.85);
         await Promise.race([renderer.compileAsync(view.world.scene, view.rig.camera), new Promise((r) => setTimeout(r, 1000))]);
       } catch {
         /* the first render compiles whatever is missing */
       }
       if (token !== busyToken) return;
       // Two frames: the render loop has drawn the new board before it is revealed.
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      await nextPaint();
       if (token !== busyToken) return;
-      clearTimeout(timer);
-      setProgress(1);
-      canvas.style.visibility = '';
       showBusy(false);
     });
   }
 
-  function newGame(diff: Difficulty, ch?: Challenge, step?: (p: number) => Promise<void>): Promise<void> | void {
+  function newGame(diff: Difficulty, ch?: Challenge, step?: () => Promise<void>): Promise<void> | void {
     const run = async () => {
       track(`start/${diff.id}`);
       game.reset(diff, ch?.seed);
       wire(game);
-      await step?.(0.3);
+      await step?.();
       view.load(game);
-      await step?.(0.7);
+      await step?.();
       game.challenge = ch ?? null;
       hud.setGame(game);
       if (ch) view.showStart(ch.at);
@@ -199,7 +181,6 @@ async function boot(): Promise<void> {
 
   wire(game);
   view.load(game);
-  setProgress(0.7);
   applyPixelRatio();
   if (challenge) {
     track(`challenge/open/${challenge.diff}`);
