@@ -63,6 +63,11 @@ export async function copyText(s: string): Promise<boolean> {
   }
 }
 
+/** The one string every platform sends/copies, so the preview shown to the player matches what is shared. */
+export function shareMessage(text: string, url: string): string {
+  return `${text} ${url}`;
+}
+
 /** Share via the system sheet when available, else copy text + link. */
 export async function shareResult(opts: { text: string; url: string }): Promise<ShareMethod> {
   const { text, url } = opts;
@@ -74,5 +79,5 @@ export async function shareResult(opts: { text: string; url: string }): Promise<
       if ((e as DOMException)?.name === 'AbortError') return 'cancel';
     }
   }
-  return (await copyText(`${text} ${url}`)) ? 'copy' : 'cancel';
+  return (await copyText(shareMessage(text, url))) ? 'copy' : 'cancel';
 }

@@ -38,6 +38,7 @@ button, select { font: inherit; color: var(--text); }
 .age { padding: 8px 14px; font-size: 16px; font-weight: 700; letter-spacing: 1.5px; color: var(--gold); white-space: nowrap; }
 .btn { background: linear-gradient(180deg, #6b4f23, #4a3516); border: 1px solid var(--panel-edge); border-radius: 4px; padding: 8px 14px; min-height: 44px; cursor: pointer; letter-spacing: 1px; }
 .btn:hover:not(:disabled):not(.off) { filter: brightness(1.2); }
+.btn:active:not(:disabled):not(.off) { filter: brightness(1.35); transform: scale(0.97); }
 .btn:disabled, .btn.off { opacity: 0.5; cursor: default; }
 .bottom { position: absolute; bottom: max(12px, env(safe-area-inset-bottom)); left: 0; right: 0; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; padding: 0 10px; pointer-events: none; }
 .bottom > * { pointer-events: auto; }
@@ -109,5 +110,9 @@ button, select { font: inherit; color: var(--text); }
 .help a { color: var(--gold); text-decoration: none; }
 .help a:hover { text-decoration: underline; }
 
-.sharebox { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
-.sharebox textarea { width: 100%; box-sizing: border-box; resize: none; padding: 8px 10px; font: 14px/1.5 var(--font-body); color: var(--text, #f3e9d2); background: rgba(0, 0, 0, 0.35); border: 1px solid var(--gold); border-radius: 4px; }
+.sharebox { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; text-align: left; }
+.sharebox small { color: var(--muted); font-family: var(--font-body); font-size: 13px; }
+.sharecard { border: 1px solid var(--gold); border-radius: 4px; background: rgba(0, 0, 0, 0.35); overflow: hidden; }
+.sharecard img { display: block; width: 100%; aspect-ratio: 1200 / 630; object-fit: cover; }
+.sharecard p { margin: 0; padding: 8px 10px 0; font: 14px/1.5 var(--font-body); }
+.sharecard .shareurl { padding-bottom: 8px; color: var(--muted); font-size: 12px; word-break: break-all; }

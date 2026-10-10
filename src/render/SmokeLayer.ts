@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { SMOKE_POINTS } from './PropFactory';
-import { smokeMaterial } from './Materials';
 
 const PUFFS = 4;
 
@@ -19,7 +18,7 @@ export class SmokeLayer {
   private readonly base: THREE.InstancedBufferAttribute;
   private age = 0;
 
-  constructor(cells: number) {
+  constructor(cells: number, mat: THREE.Material) {
     const geo = new THREE.InstancedBufferGeometry();
     const quad = new THREE.PlaneGeometry(1, 1);
     geo.index = quad.index;
@@ -29,9 +28,13 @@ export class SmokeLayer {
     this.base.setUsage(THREE.DynamicDrawUsage);
     geo.setAttribute('sBase', this.base);
     geo.instanceCount = 0;
-    this.mesh = new THREE.Mesh(geo, smokeMaterial());
+    this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 2;
+  }
+
+  dispose(): void {
+    this.mesh.geometry.dispose();
   }
 
   add(cell: number, x: number, y: number, z: number, yaw: number, landmark: boolean): void {

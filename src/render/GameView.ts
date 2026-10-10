@@ -10,7 +10,7 @@ import { NumberLayer } from './NumberLayer';
 import { Picker } from './Picker';
 import { Models } from './PropFactory';
 import { PropLayer } from './PropLayer';
-import { propMaterial } from './Materials';
+import { propMaterial, smokeMaterial, tileMaterial } from './Materials';
 import { SmokeLayer } from './SmokeLayer';
 import { HIDDEN_H, TileLayer } from './TileLayer';
 import { WATER_Y, WaterLayer } from './WaterLayer';
@@ -61,6 +61,9 @@ export class GameView {
   /** Frames to keep rendering after the last visible change. */
   private pendingFrames = 3;
 
+  private readonly tileMat = tileMaterial();
+  private readonly smokeMat = smokeMaterial();
+  private readonly numberMat = NumberLayer.material();
   private readonly propMat = propMaterial(false);
   private readonly swayMat = propMaterial(true);
   private readonly flatMat = new THREE.MeshBasicMaterial({ vertexColors: true });
@@ -115,12 +118,15 @@ export class GameView {
       if ((c as THREE.InstancedMesh).isInstancedMesh) (c as THREE.InstancedMesh).dispose();
       else for (const m of c.children) (m as THREE.InstancedMesh).dispose?.();
     }
+    this.tiles?.dispose();
+    this.numbers?.dispose();
+    this.smoke?.dispose();
     const n = b.size;
-    this.tiles = new TileLayer(b, game.terrain);
-    this.numbers = new NumberLayer(n);
+    this.tiles = new TileLayer(b, game.terrain, this.tileMat);
+    this.numbers = new NumberLayer(n, this.numberMat);
     this.water?.dispose();
     this.water = new WaterLayer(b.width, b.height);
-    this.smoke = new SmokeLayer(n);
+    this.smoke = new SmokeLayer(n, this.smokeMat);
     this.trees = new PropLayer(this.geo.pine, this.swayMat, n, true);
     this.oaks = new PropLayer(this.geo.oak, this.swayMat, n, true);
     this.groves = new PropLayer(this.geo.grove, this.swayMat, n, true);

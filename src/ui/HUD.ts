@@ -1,7 +1,7 @@
 import './hud.css';
 import { ABILITIES, AGES, MAX_AGE, RES, type Cost } from '../empire/Ages';
 import { diffLabel, diffName, getLang, t, type Lang, type StrKey } from '../i18n';
-import { buildChallengeUrl, canShareNatively, copyText, shareResult } from '../share';
+import { buildChallengeUrl, canShareNatively, copyText, shareMessage, shareResult } from '../share';
 import { track } from '../analytics';
 import { DIFFICULTIES, type Game } from '../Game';
 import { loadBest, type Settings } from '../settings';
@@ -79,6 +79,8 @@ export class HUD {
       this.bottom.appendChild(b);
     });
     this.face.onclick = () => actions.restart();
+    // iOS Safari only applies :active styles when some touch listener exists.
+    this.root.addEventListener('touchstart', () => {}, { passive: true });
     this.root.append(top, this.bottom, this.tip, this.toastEl, this.challengeEl, this.menu, this.endBox);
     this.buildMenu();
     this.refresh();
@@ -255,41 +257,35 @@ export class HUD {
       const score = empire ? this.score() : undefined;
       const text = t('end.shareText', { diff: diffLabel(g.diff), s: secs, score: score !== undefined ? t('end.shareScore', { n: score }) : '' });
       const url = buildChallengeUrl(`${location.origin}${location.pathname}`, { diff: g.diff.id, seed: g.seed, at: g.board.firstCell, t: t0, score });
-      box.querySelector('[data-a=share]')!.addEventListener('click', async () => {
-        if (canShareNatively()) {
-          const method = await shareResult({ text, url });
-          if (method !== 'cancel') track(`share/${method}`);
-          return;
-        }
-        this.showSharePanel(box, `${text} ${url}`);
-      });
+      box.querySelector('[data-a=share]')!.addEventListener('click', () => this.showSharePanel(box, text, url));
     }
     this.endBox.appendChild(box);
     clearTimeout(this.endTimer);
     this.endTimer = window.setTimeout(() => this.endBox.classList.add('show'), won ? 1200 : 1500);
   }
 
-  /** Desktop: show the message + link right in the dialog with a copy button. */
-  private showSharePanel(box: HTMLElement, msg: string): void {
-    let panel = box.querySelector<HTMLElement>('.sharebox');
-    if (!panel) {
-      panel = el(`<div class="sharebox"><textarea readonly rows="3"></textarea><button class="btn" data-a="copy">${t('end.copy')}</button></div>`);
-      box.appendChild(panel);
-      const ta = panel.querySelector('textarea')!;
-      ta.value = msg;
-      const copy = async () => {
-        ta.select();
-        const ok = (await copyText(msg)) || document.execCommand('copy');
-        if (ok) {
-          this.toast(t('toast.copied'));
-          track('share/copy');
-        }
-      };
-      panel.querySelector('button')!.addEventListener('click', () => void copy());
-      ta.addEventListener('focus', () => ta.select());
-      void copy();
-    }
-    panel.querySelector('textarea')!.select();
+  /** Preview of exactly what gets shared (same on phone and desktop), with the platform's send action below it. */
+  private showSharePanel(box: HTMLElement, text: string, url: string): void {
+    if (box.querySelector('.sharebox')) return;
+    const native = canShareNatively();
+    const panel = el(`<div class="sharebox"><small>${t('end.preview')}</small>
+      <div class="sharecard"><img src="${import.meta.env.BASE_URL}og.png" alt="" /><p class="sharetext"></p><p class="shareurl"></p></div>
+      <button class="btn">${native ? t('end.shareNow') : t('end.copy')}</button></div>`);
+    panel.querySelector('.sharetext')!.textContent = text;
+    panel.querySelector('.shareurl')!.textContent = url;
+    box.appendChild(panel);
+    const copy = async () => {
+      if ((await copyText(shareMessage(text, url))) || document.execCommand('copy')) {
+        this.toast(t('toast.copied'));
+        track('share/copy');
+      }
+    };
+    panel.querySelector('button')!.addEventListener('click', async () => {
+      if (!native) return void copy();
+      const method = await shareResult({ text, url });
+      if (method !== 'cancel') track(`share/${method}`);
+    });
+    if (!native) void copy();
   }
 
   private score(): number {

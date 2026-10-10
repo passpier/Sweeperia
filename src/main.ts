@@ -33,7 +33,13 @@ async function boot(): Promise<void> {
   view.world.setShadows(settings.quality !== 'low', settings.quality === 'high' ? 2048 : 1024);
   motion.value = settings.quality === 'low' ? 0 : 1;
   const animated = settings.quality !== 'low';
-  const post = settings.quality === 'high' ? new Post(renderer, view.world.scene, view.rig.camera) : null;
+  // The bloom pass is built after the first frame so it doesn't delay it.
+  let post: Post | null = null;
+  const bootEl = document.getElementById('boot');
+  const showBusy = (on: boolean) => {
+    if (on) bootEl?.classList.remove('hide');
+    else bootEl?.classList.add('hide');
+  };
 
   const challenge = parseChallenge(location.search);
   const startDiff = DIFFICULTIES.find((d) => d.id === (challenge?.diff ?? new URLSearchParams(location.search).get('diff'))) ?? DIFFICULTIES[3];
@@ -53,7 +59,9 @@ async function boot(): Promise<void> {
       pixelScale = s;
       applyPixelRatio();
     },
-    post ? [{ off: () => (post.on = false), on: () => (post.on = true) }] : [],
+    settings.quality === 'high'
+      ? [{ off: () => post && (post.on = false), on: () => post && (post.on = true) }]
+      : [],
   );
   window.addEventListener('resize', applyPixelRatio);
 
@@ -63,9 +71,9 @@ async function boot(): Promise<void> {
       newGame: (id) => {
         // Picking a difficulty from the menu leaves the shared challenge.
         if (game.challenge) history.replaceState(null, '', location.pathname);
-        newGame(DIFFICULTIES.find((d) => d.id === id)!);
+        requestNewGame(DIFFICULTIES.find((d) => d.id === id)!);
       },
-      restart: () => newGame(game.diff, game.challenge ?? undefined),
+      restart: () => requestNewGame(game.diff, game.challenge ?? undefined),
       openMenu: () => hud.toggleMenu(true),
       settingsChanged: (s: Settings) => {
         const reload = s.quality !== settings.quality || s.lang !== settings.lang;
@@ -121,6 +129,30 @@ async function boot(): Promise<void> {
     };
   }
 
+  /**
+   * Closes the dialogs right away, then builds the board after the next paint so a tap gets
+   * visual feedback within a frame. Big boards cover the screen with the loading layer meanwhile.
+   */
+  function requestNewGame(diff: Difficulty, ch?: Challenge): void {
+    hud.toggleMenu(false);
+    hud.hideEnd();
+    const big = diff.w * diff.h >= 1000;
+    if (big) showBusy(true);
+    requestAnimationFrame(() =>
+      setTimeout(async () => {
+        newGame(diff, ch);
+        if (big) {
+          try {
+            await Promise.race([renderer.compileAsync(view.world.scene, view.rig.camera), new Promise((r) => setTimeout(r, 1000))]);
+          } catch {
+            /* the first render compiles whatever is missing */
+          }
+          showBusy(false);
+        }
+      }, 0),
+    );
+  }
+
   function newGame(diff: Difficulty, ch?: Challenge): void {
     track(`start/${diff.id}`);
     game.reset(diff, ch?.seed);
@@ -158,7 +190,7 @@ async function boot(): Promise<void> {
     key: (k) => {
       if (k === 'escape') hud.toggleMenu();
       else if (hud.menuOpen) return;
-      else if (k === 'r') newGame(game.diff, game.challenge ?? undefined);
+      else if (k === 'r') requestNewGame(game.diff, game.challenge ?? undefined);
       else if (k === 'f3') stats.toggle();
       else if (k === 'q') view.rig.rotate(-1);
       else if (k === 'e') view.rig.rotate(1);
@@ -174,15 +206,10 @@ async function boot(): Promise<void> {
     }
   });
 
-  try {
-    // Don't let a slow/stalled precompile (e.g. a backgrounded tab) block the first frame.
-    await Promise.race([renderer.compileAsync(view.world.scene, view.rig.camera), new Promise((r) => setTimeout(r, 1500))]);
-  } catch (e) {
-    console.warn('shader precompile failed', e);
-  }
   setInterval(() => hud.tick(), 100);
 
   let last = performance.now();
+  let firstFrame = true;
   renderer.setAnimationLoop(() => {
     const t = performance.now();
     const dtMs = t - last;
@@ -193,6 +220,15 @@ async function boot(): Promise<void> {
       if (post?.on) post.render();
       else renderer.render(view.world.scene, view.rig.camera);
       adaptive.sample(dtMs, stats.vsyncMs);
+      if (firstFrame) {
+        firstFrame = false;
+        showBusy(false);
+        // Warm up pipelines and build bloom off the critical path.
+        setTimeout(() => {
+          if (settings.quality === 'high') post = new Post(renderer, view.world.scene, view.rig.camera);
+          renderer.compileAsync(view.world.scene, view.rig.camera).catch((e) => console.warn('shader precompile failed', e));
+        }, 0);
+      }
     }
     stats.extra = `${info.backend}${post?.on ? '+bloom' : ''}  dpr×${pixelScale.toFixed(2)}  draws ${renderer.info.render.calls}  tris ${renderer.info.render.triangles}`;
     stats.frame(dtMs, need);

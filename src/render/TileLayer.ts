@@ -3,7 +3,6 @@ import { HIDDEN, REVEALED, type Board } from '../core/Board';
 import { Terrain } from '../core/Terrain';
 import { AGES } from '../empire/Ages';
 import { easeOutBack, hash01 } from './ease';
-import { tileMaterial } from './Materials';
 
 export const HIDDEN_H = 0.5;
 export const REVEALED_H = 0.1;
@@ -33,13 +32,12 @@ export class TileLayer {
   private readonly col = new THREE.Color();
   private age = 0;
 
-  constructor(private readonly board: Board, private readonly terrain: Uint8Array) {
+  constructor(private readonly board: Board, private readonly terrain: Uint8Array, mat: THREE.Material) {
     const n = board.size;
     const geo = new THREE.BoxGeometry(1, 1, 1);
     const tAttr = new Float32Array(n);
     for (let i = 0; i < n; i++) tAttr[i] = terrain[i];
     geo.setAttribute('terrain', new THREE.InstancedBufferAttribute(tAttr, 1));
-    const mat = tileMaterial();
     this.mesh = new THREE.InstancedMesh(geo, mat, n);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.receiveShadow = true;
@@ -54,6 +52,11 @@ export class TileLayer {
     }
     this.mesh.instanceMatrix.needsUpdate = true;
     this.mesh.instanceColor!.needsUpdate = true;
+  }
+
+  dispose(): void {
+    this.mesh.geometry.dispose();
+    this.mesh.dispose();
   }
 
   centerX(i: number): number {

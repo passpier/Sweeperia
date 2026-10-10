@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildChallengeUrl, parseChallenge, type Challenge } from '../src/share';
+import { buildChallengeUrl, parseChallenge, shareMessage, type Challenge } from '../src/share';
 
 const ok: Challenge = { diff: 'empire70', seed: 123456789, at: 845, t: 42137, score: 9876 };
 const q = (s: string) => `?${s}`;
@@ -32,5 +32,11 @@ describe('challenge links', () => {
     ['script in score', 'diff=easy&seed=1&at=1&t=5000&score=%3Cb%3E'],
   ])('rejects %s', (_n, s) => {
     expect(parseChallenge(q(s))).toBeNull();
+  });
+});
+
+describe('shareMessage', () => {
+  it('joins text and url with one space', () => {
+    expect(shareMessage('hi', 'https://x.test/?a=1')).toBe('hi https://x.test/?a=1');
   });
 });

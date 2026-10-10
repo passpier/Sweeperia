@@ -33,9 +33,12 @@ export class NumberLayer {
   readonly group = new THREE.Group();
   private yaw = 0;
 
-  constructor(cells: number) {
-    const tex = makeAtlas();
-    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.35, depthWrite: true });
+  /** Atlas + material are built once and shared by every board. */
+  static material(): THREE.MeshBasicMaterial {
+    return new THREE.MeshBasicMaterial({ map: makeAtlas(), transparent: true, alphaTest: 0.35, depthWrite: true });
+  }
+
+  constructor(cells: number, mat: THREE.Material) {
     for (let n = 1; n <= 8; n++) {
       const g = new THREE.PlaneGeometry(0.78, 0.78);
       g.rotateX(-Math.PI / 2);
@@ -69,5 +72,9 @@ export class NumberLayer {
 
   clear(): void {
     for (const l of this.layers) l.clear();
+  }
+
+  dispose(): void {
+    for (const l of this.layers) l.mesh.geometry.dispose();
   }
 }
